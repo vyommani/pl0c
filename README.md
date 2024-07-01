@@ -57,20 +57,22 @@ Directory Structure
 css
 
 src/
-├── ast.rs
-├── code_generator.rs
-├── lexer.rs
-├── main.rs
-├── parser.rs
-└── token.rs
-|__ lib.rs
 
-    ast.rs: Defines the abstract syntax tree (AST) nodes and the visitor pattern.
-    code_generator.rs: Generates PL/0 assembly code from the AST.
-    lexer.rs: Lexical analyzer that tokenizes the input source code.
+1-> ast.rs
+2-> code_generator.rs
+3-> lexer.rs
+4-> main.rs
+5-> parser.rs
+6-> token.rs
+7-> lib.rs
+
     main.rs: Entry point of the application.
-    parser.rs: Parses tokens into an AST.
+    lexer.rs: Lexical analyzer that tokenizes the input source code.
+    parser.rs: Parses tokens into an AST(not yet implemented).
     token.rs: Defines the tokens used by the lexer and parser.
+    ast.rs: Defines the abstract syntax tree (AST) nodes and the visitor pattern(Not yet implemented).
+    code_generator.rs: Generates PL/0 assembly code from the AST(Not yet implemented).
+    
 
 Getting Started
 Prerequisites
