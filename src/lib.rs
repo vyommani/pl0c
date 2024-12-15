@@ -1,11 +1,19 @@
 use std::{fs::File, io::Read, path::Path, process::exit};
 
+pub mod ast;
+pub mod block;
+pub mod decl;
+pub mod expression;
+pub mod io;
 pub mod lexer;
 pub mod parser;
+pub mod program;
+pub mod statement;
 pub mod token;
-pub mod ast;
+pub mod types;
+pub mod visiters;
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.1.1";
 
 pub struct LineNumber {
     pub line: u32,
@@ -13,9 +21,7 @@ pub struct LineNumber {
 
 impl Default for LineNumber {
     fn default() -> Self {
-        Self {
-            line: 1,
-        }
+        Self { line: 1 }
     }
 }
 

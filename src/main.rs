@@ -29,9 +29,10 @@ fn main() {
 
     match scan(&mut state, &bytes) {
         Ok(mut tokens) => {
-            println!("Tokenization successfull!");
-            let _ = parse(&mut tokens);
-            println!("Parsing successfull, a valid pl/0 program!")
+            let ast = parse(&mut tokens);
+            if let Some(ast) = ast {
+                ast.print();
+            }
         }
         Err(e) => {
             println!("{e}");

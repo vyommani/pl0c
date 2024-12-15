@@ -1,0 +1,47 @@
+use crate::ast::Exit;
+use crate::ast::Variable;
+use crate::block::Block;
+use crate::decl::ConstDecl;
+use crate::decl::ProcDecl;
+use crate::decl::VarDecl;
+use crate::expression::BinOp;
+use crate::expression::OddCondition;
+use crate::expression::RelationalCondition;
+use crate::io::ReadChar;
+use crate::io::ReadInt;
+use crate::io::WriteChar;
+use crate::io::WriteInt;
+use crate::io::WriteStr;
+use crate::program::Program;
+use crate::statement::AssignStmt;
+use crate::statement::BeginStmt;
+use crate::statement::CallStmt;
+use crate::statement::IfStmt;
+use crate::statement::WhileStatement;
+use crate::types::Ident;
+use crate::types::Number;
+
+pub trait ASTVisitor {
+    fn visit_ident(&mut self, ident: &Ident);
+    fn visit_number(&mut self, number: &Number);
+    fn visit_variable(&mut self, variable: &Variable);
+    fn visit_binary_operation(&mut self, binary_operation: &BinOp);
+    fn visit_while_statement(&mut self, while_statement: &WhileStatement);
+    fn visit_condition(&mut self, condition: &OddCondition);
+    fn visit_relational_condition(&mut self, condition: &RelationalCondition);
+    fn visit_call(&mut self, condition: &CallStmt);
+    fn visit_assign(&mut self, expr: &AssignStmt);
+    fn visit_begin(&mut self, expr: &BeginStmt);
+    fn visit_if(&mut self, expr: &IfStmt);
+    fn visit_write_int(&mut self, expr: &WriteInt);
+    fn visit_write_char(&mut self, expr: &WriteChar);
+    fn visit_write_str(&mut self, expr: &WriteStr);
+    fn visit_read_int(&mut self, expr: &ReadInt);
+    fn visit_read_char(&mut self, expr: &ReadChar);
+    fn visit_exit(&mut self, expr: &Exit);
+    fn visit_const(&mut self, expr: &ConstDecl);
+    fn visit_var_decl(&mut self, expr: &VarDecl);
+    fn visit_proc_decl(&mut self, expr: &ProcDecl);
+    fn visit_block(&mut self, expr: &Block);
+    fn visit_program(&mut self, expr: &Program);
+}

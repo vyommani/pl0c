@@ -1,5 +1,5 @@
-use crate::LineNumber;
 use crate::token::Token;
+use crate::LineNumber;
 use core::panic;
 use std::{iter::Peekable, str::Chars};
 
@@ -49,13 +49,13 @@ pub fn scan(state: &mut LineNumber, file_content: &str) -> Result<Vec<Token>, St
                             } else if *c == '>' {
                                 chars.next(); //consume the '>' character
                                 Token::Hash
-                            }else {
+                            } else {
                                 Token::LessThan
                             }
                         } else {
                             Token::LessThan
                         }
-                    },
+                    }
                     '>' => {
                         lookahead = true;
                         chars.next(); // look ahead one charcter
@@ -65,7 +65,7 @@ pub fn scan(state: &mut LineNumber, file_content: &str) -> Result<Vec<Token>, St
                         } else {
                             Token::GreaterThan
                         }
-                    },
+                    }
                     ':' => {
                         lookahead = true;
                         chars.next(); // look ahead one charcter
@@ -74,12 +74,15 @@ pub fn scan(state: &mut LineNumber, file_content: &str) -> Result<Vec<Token>, St
                         }
                         chars.next(); // consume the '=' character.
                         Token::Assign
+                    }
+                    '\'' => match get_string_literal(&mut chars, state) {
+                        Ok(literal) => literal,
+                        Err(_) => Token::StringLiteral("".to_string()),
                     },
-                    '\'' => Token::String,
                     '\0' => Token::Null,
                     _ => {
                         return Err(format!("Unknown token on line {}", state.line));
-                    },
+                    }
                 };
                 lexeme.push(token);
                 if lookahead == true {
@@ -112,17 +115,55 @@ fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
     }
 }
 
-fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
-    'whitespace: for c in chars.by_ref() { 
-        if c != ' ' || c != '\t' || c != '\n' || c != '\r' {
-            break 'whitespace;
+pub fn get_string_literal(
+    chars: &mut Peekable<Chars<'_>>,
+    state: &mut LineNumber,
+) -> Result<Token, String> {
+    let mut string_literal = String::new();
+    chars.next(); // consume the opening '
+    loop {
+        if let Some(c) = chars.peek() {
+            if (*c) == '\'' {
+                break;
+            } else if (*c) == '\n' {
+                state.line += 1;
+                return Err(format!(
+                    "multiline string literal not supported {}",
+                    state.line
+                ));
+            } else if (*c) == '\0' {
+                return Err(format!(
+                    "unterminited  string literal on line {}",
+                    state.line
+                ));
+            } else {
+                string_literal.push(*c);
+                chars.next();
+            }
+        } else {
+            return Err(format!(
+                "Unterminated string literal on line {}",
+                state.line
+            ));
         }
+    }
+    Ok(Token::StringLiteral(string_literal))
+}
+
+fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
+    'whitespace: for c in chars.by_ref() {
         if c == '\n' {
             state.line += 1;
         }
+        if c != ' ' || c != '\t' || c != '\n' || c != '\r' {
+            break 'whitespace;
+        }
     }
 }
-pub fn assignment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Result<Token, String> {
+pub fn assignment(
+    chars: &mut Peekable<Chars<'_>>,
+    state: &mut LineNumber,
+) -> Result<Token, String> {
     chars.next();
     if let Some(c) = chars.peek() {
         if (*c).eq(&'=') {
@@ -136,7 +177,10 @@ pub fn assignment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Re
     }
 }
 
-pub fn identifier(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Result<Token, String> {
+pub fn identifier(
+    chars: &mut Peekable<Chars<'_>>,
+    state: &mut LineNumber,
+) -> Result<Token, String> {
     let mut idt = String::new();
     loop {
         if let Some(c) = chars.peek() {
@@ -164,11 +208,11 @@ pub fn identifier(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Re
         "while" => Token::While,
         "do" => Token::Do,
         "odd" => Token::Odd,
-        "writeInt" => Token::WriteInt,
-        "writeChar" => Token::WriteChar,
-        "writeStr" => Token::WriteStr,
-        "readInt" => Token::ReadInt,
-        "readChar" => Token::ReadChar,
+        "writeint" | "writeInt" => Token::WriteInt,
+        "writechar" | "writeChar" => Token::WriteChar,
+        "writestr" | "writeStr" => Token::WriteStr,
+        "readint" | "readInt" => Token::ReadInt,
+        "readchar" | "readChar" => Token::ReadChar,
         "into" => Token::Into,
         "size" => Token::Size,
         "exit" => Token::Exit,

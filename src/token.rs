@@ -45,7 +45,7 @@ pub enum Token {
     RBrack,
     LAngBrack,
     RAngBrack,
-    String,
+    StringLiteral(String),
     Null,
     Size,
     Forward,
