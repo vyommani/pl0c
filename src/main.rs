@@ -1,5 +1,5 @@
 use clap::Parser;
-use pl0c::{self, lexer::scan, parser::parse, read, VERSION};
+use pl0c::{self, lexer::scan, parser::parse, read, symboltable::SymbolTable, VERSION};
 use std::process::exit;
 
 #[derive(Parser)]
@@ -12,6 +12,7 @@ fn main() {
     let args = Cli::parse();
     let bytes: String;
     let mut state = pl0c::LineNumber::default();
+    let mut symbol_table = SymbolTable::new();
 
     println!("pl0rs -- PL/0 compiler version {}", VERSION);
     println!("(c) Vyom Tewari, 2024 GPLv3");
@@ -27,9 +28,9 @@ fn main() {
         }
     }
 
-    match scan(&mut state, &bytes) {
+    match scan(&mut state, &bytes, &mut symbol_table) {
         Ok(mut tokens) => {
-            let ast = parse(&mut tokens);
+            let ast = parse(&mut tokens, &mut symbol_table);
             if let Some(ast) = ast {
                 ast.print();
             }

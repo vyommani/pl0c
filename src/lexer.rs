@@ -1,9 +1,13 @@
-use crate::token::Token;
 use crate::LineNumber;
+use crate::{symboltable::SymbolTable, token::Token};
 use core::panic;
 use std::{iter::Peekable, str::Chars};
 
-pub fn scan(state: &mut LineNumber, file_content: &str) -> Result<Vec<Token>, String> {
+pub fn scan(
+    state: &mut LineNumber,
+    file_content: &str,
+    table: &mut SymbolTable,
+) -> Result<Vec<Token>, String> {
     let mut chars = file_content.chars().peekable();
     let mut lexeme: Vec<Token> = vec![];
     let mut lookahead = false;
@@ -160,6 +164,7 @@ fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
         }
     }
 }
+
 pub fn assignment(
     chars: &mut Peekable<Chars<'_>>,
     state: &mut LineNumber,

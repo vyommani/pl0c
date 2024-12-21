@@ -9,6 +9,7 @@ pub mod lexer;
 pub mod parser;
 pub mod program;
 pub mod statement;
+pub mod symboltable;
 pub mod token;
 pub mod types;
 pub mod visiters;
@@ -16,7 +17,7 @@ pub mod visiters;
 pub const VERSION: &str = "0.1.1";
 
 pub struct LineNumber {
-    pub line: u32,
+    pub line: usize,
 }
 
 impl Default for LineNumber {

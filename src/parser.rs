@@ -18,9 +18,13 @@ use crate::statement::BeginStmt;
 use crate::statement::CallStmt;
 use crate::statement::IfStmt;
 use crate::statement::WhileStatement;
+use crate::symboltable::Symbol;
+use crate::symboltable::SymbolTable;
+use crate::symboltable::SymbolType;
 use crate::token::Token;
 use crate::types::Ident;
 use crate::types::Number;
+use std::process::exit;
 use std::slice::Iter;
 
 static mut TOKEN: Token = Token::Null;
@@ -41,7 +45,8 @@ fn next(iter: &mut Iter<Token>) {
 fn expect(expected: Token, iter: &mut Iter<Token>) {
     unsafe {
         if expected != TOKEN {
-            panic!("syntax error, expected:{} and found:{}", expected, TOKEN);
+            println!("syntax error, expected:{} and found:{}", expected, TOKEN);
+            exit(1);
         }
     }
     next(iter);
@@ -81,7 +86,7 @@ fn get_numeric_literal(token: Token) -> i64 {
  *            ["var" ident {"," ident} ";"]
  *	    	  { "procedure" ident ";" block ";" } statement .
 */
-fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn block(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
         let mut const_decl = ConstDecl::default();
         let mut var_decl = VarDecl::default();
@@ -95,6 +100,10 @@ fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Equal, iter);
             num = get_numeric_literal(TOKEN.clone());
+            table.insert(
+                id.clone(),
+                Symbol::new(id.clone(), SymbolType::Constant(num), 5),
+            );
             expect(Token::Number(DEFAULT_NUMBER), iter);
             consts.push((id.clone(), num));
             while TOKEN == Token::Comma {
@@ -103,6 +112,10 @@ fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 expect(Token::Equal, iter);
                 num = get_numeric_literal(TOKEN.clone());
+                table.insert(
+                    id.clone(),
+                    Symbol::new(id.clone(), SymbolType::Constant(num), 5),
+                );
                 expect(Token::Number(DEFAULT_NUMBER), iter);
                 consts.push((id.clone(), num));
             }
@@ -114,11 +127,13 @@ fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
             let mut id: String;
             expect(Token::Var, iter);
             id = get_identifier(TOKEN.clone());
+            table.insert(id.clone(), Symbol::new(id.clone(), SymbolType::Variable, 5));
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             idents.push(id);
             while TOKEN == Token::Comma {
                 expect(Token::Comma, iter);
                 id = get_identifier(TOKEN.clone());
+                table.insert(id.clone(), Symbol::new(id.clone(), SymbolType::Variable, 5));
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 idents.push(id);
             }
@@ -127,16 +142,23 @@ fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
         }
         let mut procedurs = Vec::new();
         while TOKEN == Token::Procedure {
+            // We have to always insert the procedure name in global(top) scope.
             expect(Token::Procedure, iter);
             let name = get_identifier(TOKEN.clone());
+            table.insert(
+                name.clone(),
+                Symbol::new(name.clone(), SymbolType::Procedure, 5),
+            );
+            table.push_scope();
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Semicolon, iter);
-            let block = block(iter);
+            let block = block(iter, table);
             expect(Token::Semicolon, iter);
             procedurs.push((name, block));
+            table.drop_scope();
         }
         proc_decl = ProcDecl::new(procedurs);
-        let stmt = statement(iter);
+        let stmt = statement(iter, table);
         return Some(Box::new(Block::new(const_decl, var_decl, proc_decl, stmt)));
     }
 }
@@ -153,52 +175,52 @@ fn block(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
  *  		  | "writeStr" ( ident | string )
  *	    	  | "exit" expression ]  .
  */
-fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn statement(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
         match &TOKEN {
             Token::Ident(_) => {
                 let id = get_identifier(TOKEN.clone());
+                table.type_check(id.clone(), SymbolType::Identifier);
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 expect(Token::Assign, iter);
-                let expr = expression(iter);
+                let expr = expression(iter, table);
                 return Some(Box::new(AssignStmt::new(id.clone(), expr)));
             }
             Token::Call => {
                 expect(Token::Call, iter);
                 let id = get_identifier(TOKEN.clone());
+                table.type_check(id.clone(), SymbolType::Procedure);
                 expect(Token::Ident(TOKEN.to_string()), iter);
                 return Some(Box::new(CallStmt::new(id)));
             }
             Token::Begin => {
                 expect(Token::Begin, iter);
                 let mut stmts = Vec::new();
-                //statement(iter);
-                stmts.push(statement(iter));
+                stmts.push(statement(iter, table));
                 while TOKEN == Token::Semicolon {
                     expect(Token::Semicolon, iter);
-                    //statement(iter);
-                    stmts.push(statement(iter));
+                    stmts.push(statement(iter, table));
                 }
                 expect(Token::End, iter);
                 return Some(Box::new(BeginStmt::new(stmts)));
             }
             Token::If => {
                 expect(Token::If, iter);
-                let condition = condition(iter);
+                let condition = condition(iter, table);
                 expect(Token::Then, iter);
-                let true_stmt = statement(iter);
+                let true_stmt = statement(iter, table);
                 let mut false_stmt = None;
                 if TOKEN == Token::Else {
                     expect(Token::Else, iter);
-                    false_stmt = statement(iter);
+                    false_stmt = statement(iter, table);
                 }
                 return Some(Box::new(IfStmt::new(condition, true_stmt, false_stmt)));
             }
             Token::While => {
                 expect(Token::While, iter);
-                let cond = condition(iter);
+                let cond = condition(iter, table);
                 expect(Token::Do, iter);
-                let body = statement(iter);
+                let body = statement(iter, table);
                 return Some(Box::new(WhileStatement::new(cond, body)));
             }
             Token::WriteInt => {
@@ -206,7 +228,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                 if TOKEN == Token::LParen {
                     expect(Token::LParen, iter);
                 }
-                let expr = expression(iter);
+                let expr = expression(iter, table);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
                 }
@@ -217,7 +239,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                 if TOKEN == Token::LParen {
                     expect(Token::LParen, iter);
                 }
-                let expr = expression(iter);
+                let expr = expression(iter, table);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
                 }
@@ -229,6 +251,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                 match &TOKEN {
                     Token::Ident(_) => {
                         let id = get_identifier(TOKEN.clone());
+                        table.type_check(id.clone(), SymbolType::Identifier);
                         expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                         expect(Token::RParen, iter);
                         return Some(Box::new(WriteStr::new(id.clone())));
@@ -250,6 +273,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                     expect(Token::LParen, iter);
                 }
                 let ident = get_identifier(TOKEN.clone());
+                table.type_check(ident.clone(), SymbolType::Identifier);
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
@@ -262,6 +286,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                     expect(Token::LParen, iter);
                 }
                 let ident = get_identifier(TOKEN.clone());
+                table.type_check(ident.clone(), SymbolType::Identifier);
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
@@ -270,7 +295,7 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
             }
             Token::Exit => {
                 expect(Token::Exit, iter);
-                let expr = expression(iter);
+                let expr = expression(iter, table);
                 return Some(Box::new(Exit::new(expr)));
             }
             _ => {
@@ -282,14 +307,14 @@ fn statement(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
 
 // condition	= "odd" expression
 //      		| expression ( comparator ) expression .
-fn condition(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn condition(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
         if TOKEN == Token::Odd {
             expect(Token::Odd, iter);
-            let expr = expression(iter);
+            let expr = expression(iter, table);
             return Some(Box::new(OddCondition::new(expr)));
         } else {
-            let left = expression(iter);
+            let left = expression(iter, table);
             let mut op = String::from("");
             match &TOKEN {
                 Token::Equal
@@ -305,23 +330,23 @@ fn condition(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
                     println!("invalid conditional");
                 }
             }
-            let right = expression(iter);
+            let right = expression(iter, table);
             return Some(Box::new(RelationalCondition::new(left, right, op)));
         }
     }
 }
 
 //expression	= [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term }
-fn expression(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn expression(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
         if TOKEN == Token::Plus || TOKEN == Token::Minus || TOKEN == Token::Not {
             next(iter);
         }
-        let mut lhs = term(iter);
+        let mut lhs = term(iter, table);
         while TOKEN == Token::Plus || TOKEN == Token::Minus || TOKEN == Token::Or {
             let operator = TOKEN.to_string();
             next(iter);
-            let rhs = term(iter);
+            let rhs = term(iter, table);
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
         return lhs;
@@ -329,9 +354,9 @@ fn expression(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
 }
 
 //term		= factor { ( "*" | "/" | "mod" | "and" ) factor }
-fn term(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn term(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
-        let mut lhs = factor(iter);
+        let mut lhs = factor(iter, table);
         while TOKEN == Token::Multiply
             || TOKEN == Token::Divide
             || TOKEN == Token::Modulo
@@ -339,7 +364,7 @@ fn term(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
         {
             let operator = TOKEN.to_string();
             next(iter);
-            let rhs = factor(iter);
+            let rhs = factor(iter, table);
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
         return lhs;
@@ -347,11 +372,12 @@ fn term(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
 }
 
 /* factor	= ident | number | "(" expression ")" . */
-fn factor(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
+fn factor(iter: &mut Iter<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
         match &TOKEN {
             Token::Ident(_) => {
                 let id = get_identifier(TOKEN.clone());
+                table.type_check(id.clone(), SymbolType::Identifier);
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 return Some(Box::new(Ident::new(id.to_string())));
             }
@@ -362,26 +388,26 @@ fn factor(iter: &mut Iter<Token>) -> Option<Box<dyn Node>> {
             }
             Token::LParen => {
                 expect(Token::LParen, iter);
-                let expr = expression(iter);
+                let expr = expression(iter, table);
                 expect(Token::RParen, iter);
                 return expr;
             }
             _ => {
-                panic!("Wrong token!");
+                None // revisit it.
             }
         }
     }
 }
 
 // program	= block "."
-fn program(tokens: &mut Vec<Token>) -> Option<Box<dyn Node>> {
+fn program(tokens: &mut Vec<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     let mut iter: Iter<Token> = tokens.iter();
     next(&mut iter);
-    let block = block(&mut iter);
+    let block = block(&mut iter, table);
     expect(Token::Dot, &mut iter);
     let dot = String::from(".");
     return Some(Box::new(Program::new(block, dot)));
 }
-pub fn parse(tokens: &mut Vec<Token>) -> Option<Box<dyn Node>> {
-    return program(tokens);
+pub fn parse(tokens: &mut Vec<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
+    return program(tokens, table);
 }
