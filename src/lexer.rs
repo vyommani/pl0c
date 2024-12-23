@@ -1,15 +1,16 @@
 use crate::LineNumber;
 use crate::{symboltable::SymbolTable, token::Token};
 use core::panic;
+use std::process::exit;
 use std::{iter::Peekable, str::Chars};
 
 pub fn scan(
     state: &mut LineNumber,
     file_content: &str,
     table: &mut SymbolTable,
-) -> Result<Vec<Token>, String> {
+) -> Result<Vec<(Token, usize)>, String> {
     let mut chars = file_content.chars().peekable();
-    let mut lexeme: Vec<Token> = vec![];
+    let mut lexeme: Vec<(Token, usize)> = vec![];
     let mut lookahead = false;
 
     'lexer: loop {
@@ -20,13 +21,13 @@ pub fn scan(
                 whitespace(&mut chars, state);
             } else if (*c).is_alphabetic() || (*c).eq(&'_') {
                 let token = identifier(&mut chars, state)?;
-                lexeme.push(token);
+                lexeme.push((token, state.line));
             } else if (*c).is_numeric() {
                 let token = number(&mut chars, state)?;
-                lexeme.push(token);
+                lexeme.push((token, state.line));
             } else if (*c).eq(&':') {
                 let token = assignment(&mut chars, state)?;
-                lexeme.push(token);
+                lexeme.push((token, state.line));
             } else {
                 let token = match *c {
                     '.' => Token::Dot,
@@ -88,7 +89,7 @@ pub fn scan(
                         return Err(format!("Unknown token on line {}", state.line));
                     }
                 };
-                lexeme.push(token);
+                lexeme.push((token, state.line));
                 if lookahead == true {
                     lookahead = false;
                 } else {
@@ -105,17 +106,25 @@ pub fn scan(
 fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
     let mut comment = String::new();
     chars.next(); // consume the opening curly brace
+    let mut found = false;
+    let line = state.line;
     'comment: for c in chars.by_ref() {
         if c == '\n' {
             state.line += 1;
         }
         if c == '\0' {
-            panic!("Unterminited comment.");
+            println!("Unterminited comment at line:{} ", line);
+            exit(1);
         }
         if c == '}' {
+            found = true;
             break 'comment;
         }
         comment.push(c);
+    }
+    if !found {
+        println!("Unterminted comment at line:{}", line);
+        exit(1);
     }
 }
 

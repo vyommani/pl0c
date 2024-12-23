@@ -81,7 +81,7 @@ impl SymbolTable {
         }
     }
 
-    pub fn type_check(&mut self, name: String, symbol_type: SymbolType) {
+    pub fn type_check(&mut self, name: String, symbol_type: SymbolType, line_number: usize) {
         // if there is no symbol in symbol table and if control reached here it means we have wrong keyword
         if self.scopes.len() == 0 {
             println!("Invalid keyword:{}", name);
@@ -92,20 +92,29 @@ impl SymbolTable {
                 if let Some(_) = self.get(name.to_string()) {
                     // do nothing
                 } else {
-                    println!("error: constant '{}' is not declared.", name);
+                    println!(
+                        "error: constant '{}' is not declared at line: {} ",
+                        name, line_number
+                    );
                 }
             }
             SymbolType::Identifier => {
                 if let Some(_) = self.get(name.to_string()) {
                 } else {
-                    println!("error: Identifier '{}' is not declared.", name);
+                    println!(
+                        "error: Identifier '{}' is not declared at line: {} ",
+                        name, line_number
+                    );
                     exit(1);
                 }
             }
             SymbolType::Variable => {
                 if let Some(_) = self.get(name.to_string()) {
                 } else {
-                    println!("error: variable '{}' is not declared.", name);
+                    println!(
+                        "error: variable '{}' is not declared at line: {} ",
+                        name, line_number
+                    );
                     exit(1);
                 }
             }
