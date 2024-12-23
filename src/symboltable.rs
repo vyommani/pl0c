@@ -59,8 +59,6 @@ impl SymbolTable {
     }
 
     pub fn get(&mut self, name: String) -> Option<&Symbol> {
-        //In pl/0, inner scope have access the outer scope
-        //self.scopes[self.current_scope].get(&name)
         let value = self.scopes[self.current_scope].get(&name);
         match value {
             Some(_) => {
@@ -84,6 +82,11 @@ impl SymbolTable {
     }
 
     pub fn type_check(&mut self, name: String, symbol_type: SymbolType) {
+        // if there is no symbol in symbol table and if control reached here it means we have wrong keyword
+        if self.scopes.len() == 0 {
+            println!("Invalid keyword:{}", name);
+            exit(1);
+        }
         match symbol_type {
             SymbolType::Constant(_) => {
                 if let Some(_) = self.get(name.to_string()) {

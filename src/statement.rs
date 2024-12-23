@@ -85,6 +85,7 @@ impl Node for IfStmt {
             then_branch.print();
         }
         if let Some(else_branch) = &self.else_branch {
+            println!();
             println!("else");
             else_branch.print();
         }

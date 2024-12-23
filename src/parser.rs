@@ -408,6 +408,7 @@ fn program(tokens: &mut Vec<Token>, table: &mut SymbolTable) -> Option<Box<dyn N
     let dot = String::from(".");
     return Some(Box::new(Program::new(block, dot)));
 }
+
 pub fn parse(tokens: &mut Vec<Token>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     return program(tokens, table);
 }
