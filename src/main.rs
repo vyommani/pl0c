@@ -1,5 +1,7 @@
 use clap::Parser;
-use pl0c::{self, lexer::scan, parser::parse, read, symboltable::SymbolTable, VERSION};
+use pl0c::{
+    self, codegen::IRGenerator, lexer::scan, parser::parse, read, symboltable::SymbolTable, VERSION,
+};
 use std::process::exit;
 
 #[derive(Parser)]
@@ -15,7 +17,7 @@ fn main() {
     let mut symbol_table = SymbolTable::new();
 
     println!("pl0rs -- PL/0 compiler version {}", VERSION);
-    println!("(c) Vyom Tewari, 2024 GPLv3");
+    println!("(c) Vyom Tewari, 2025 GPLv3");
 
     let file_path = &args.path;
     match read(file_path) {
@@ -30,10 +32,15 @@ fn main() {
 
     match scan(&mut state, &bytes, &mut symbol_table) {
         Ok(mut tokens) => {
+            //print!("Tokens: {:#?} ", tokens);
             let ast = parse(&mut tokens, &mut symbol_table);
-            if let Some(ast) = ast {
+            if let Some(ref ast) = ast {
                 ast.print();
             }
+            let mut codegen = IRGenerator::new(symbol_table);
+            let _ = codegen.generate_code(ast);
+            let output = codegen.get_output();
+            println!("\n{}", output);
         }
         Err(e) => {
             println!("{e}");

@@ -2,8 +2,8 @@ use crate::ast::Node;
 use crate::visiters::ASTVisitor;
 
 pub struct AssignStmt {
-    identifier: String,
-    expr: Option<Box<dyn Node>>,
+    pub identifier: String,
+    pub expr: Option<Box<dyn Node>>,
 }
 
 impl AssignStmt {
@@ -14,7 +14,7 @@ impl AssignStmt {
 
 impl Node for AssignStmt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_assign(self);
+        let _ = visitor.visit_assign(self);
     }
 
     fn print(&self) {
@@ -27,7 +27,7 @@ impl Node for AssignStmt {
 }
 
 pub struct BeginStmt {
-    stmts: Vec<Option<Box<dyn Node>>>,
+    pub stmts: Vec<Option<Box<dyn Node>>>,
 }
 
 impl BeginStmt {
@@ -38,7 +38,7 @@ impl BeginStmt {
 
 impl Node for BeginStmt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_begin(self);
+        let _ = visitor.visit_begin(self);
     }
     fn print(&self) {
         println!("begin");
@@ -52,9 +52,9 @@ impl Node for BeginStmt {
     }
 }
 pub struct IfStmt {
-    condition: Option<Box<dyn Node>>,
-    then_branch: Option<Box<dyn Node>>,
-    else_branch: Option<Box<dyn Node>>,
+    pub condition: Option<Box<dyn Node>>,
+    pub then_branch: Option<Box<dyn Node>>,
+    pub else_branch: Option<Box<dyn Node>>,
 }
 
 impl IfStmt {
@@ -73,7 +73,7 @@ impl IfStmt {
 
 impl Node for IfStmt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_if(self);
+        let _ = visitor.visit_if(self);
     }
     fn print(&self) {
         if let Some(condition) = &self.condition {
@@ -103,7 +103,7 @@ impl WhileStatement {
 }
 impl Node for WhileStatement {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_while_statement(self);
+        let _ = visitor.visit_while_statement(self);
     }
     fn print(&self) {
         if let Some(condition) = &self.condition {
@@ -118,7 +118,7 @@ impl Node for WhileStatement {
 }
 
 pub struct CallStmt {
-    identifier: String,
+    pub identifier: String,
 }
 
 impl CallStmt {
@@ -128,7 +128,7 @@ impl CallStmt {
 }
 impl Node for CallStmt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_call(self);
+        let _ = visitor.visit_call(self);
     }
     fn print(&self) {
         print!("call {}", &self.identifier);

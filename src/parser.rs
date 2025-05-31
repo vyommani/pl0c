@@ -108,10 +108,7 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Equal, iter);
             num = get_numeric_literal(TOKEN.clone());
-            table.insert(
-                id.clone(),
-                Symbol::new(id.clone(), SymbolType::Constant(num), LINE_NUMBER),
-            );
+            table.insert(&id, Symbol::new(SymbolType::Constant(num), LINE_NUMBER));
             expect(Token::Number(DEFAULT_NUMBER), iter);
             consts.push((id.clone(), num));
             while TOKEN == Token::Comma {
@@ -120,10 +117,7 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 expect(Token::Equal, iter);
                 num = get_numeric_literal(TOKEN.clone());
-                table.insert(
-                    id.clone(),
-                    Symbol::new(id.clone(), SymbolType::Constant(num), LINE_NUMBER),
-                );
+                table.insert(&id, Symbol::new(SymbolType::Constant(num), LINE_NUMBER));
                 expect(Token::Number(DEFAULT_NUMBER), iter);
                 consts.push((id.clone(), num));
             }
@@ -135,19 +129,13 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             let mut id: String;
             expect(Token::Var, iter);
             id = get_identifier(TOKEN.clone());
-            table.insert(
-                id.clone(),
-                Symbol::new(id.clone(), SymbolType::Variable, LINE_NUMBER),
-            );
+            table.insert(&id, Symbol::new(SymbolType::Variable, LINE_NUMBER));
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             idents.push(id);
             while TOKEN == Token::Comma {
                 expect(Token::Comma, iter);
                 id = get_identifier(TOKEN.clone());
-                table.insert(
-                    id.clone(),
-                    Symbol::new(id.clone(), SymbolType::Variable, LINE_NUMBER),
-                );
+                table.insert(&id, Symbol::new(SymbolType::Variable, LINE_NUMBER));
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 idents.push(id);
             }
@@ -159,10 +147,7 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             // We have to always insert the procedure name in global(top) scope.
             expect(Token::Procedure, iter);
             let name = get_identifier(TOKEN.clone());
-            table.insert(
-                name.clone(),
-                Symbol::new(name.clone(), SymbolType::Procedure, LINE_NUMBER),
-            );
+            table.insert(&name, Symbol::new(SymbolType::Procedure, LINE_NUMBER));
             table.push_scope();
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Semicolon, iter);
@@ -194,7 +179,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
         match &TOKEN {
             Token::Ident(_) => {
                 let id = get_identifier(TOKEN.clone());
-                table.type_check(id.clone(), SymbolType::Identifier, LINE_NUMBER.clone());
+                table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 expect(Token::Assign, iter);
                 let expr = expression(iter, table);
@@ -203,7 +188,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
             Token::Call => {
                 expect(Token::Call, iter);
                 let id = get_identifier(TOKEN.clone());
-                table.type_check(id.clone(), SymbolType::Procedure, LINE_NUMBER.clone());
+                table.type_check(&id, SymbolType::Procedure, LINE_NUMBER.clone());
                 expect(Token::Ident(TOKEN.to_string()), iter);
                 return Some(Box::new(CallStmt::new(id)));
             }
@@ -265,7 +250,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
                 match &TOKEN {
                     Token::Ident(_) => {
                         let id = get_identifier(TOKEN.clone());
-                        table.type_check(id.clone(), SymbolType::Identifier, LINE_NUMBER.clone());
+                        table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
                         expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                         expect(Token::RParen, iter);
                         return Some(Box::new(WriteStr::new(id.clone())));
@@ -288,7 +273,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
                     expect(Token::LParen, iter);
                 }
                 let ident = get_identifier(TOKEN.clone());
-                table.type_check(ident.clone(), SymbolType::Identifier, LINE_NUMBER.clone());
+                table.type_check(&ident, SymbolType::Identifier, LINE_NUMBER.clone());
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
@@ -301,7 +286,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
                     expect(Token::LParen, iter);
                 }
                 let ident = get_identifier(TOKEN.clone());
-                table.type_check(ident.clone(), SymbolType::Identifier, LINE_NUMBER.clone());
+                table.type_check(&ident, SymbolType::Identifier, LINE_NUMBER.clone());
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
@@ -389,10 +374,10 @@ fn term(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<
 /* factor	= ident | number | "(" expression ")" . */
 fn factor(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
     unsafe {
-        match &TOKEN {
+        match TOKEN {
             Token::Ident(_) => {
                 let id = get_identifier(TOKEN.clone());
-                table.type_check(id.clone(), SymbolType::Identifier, LINE_NUMBER.clone());
+                table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 return Some(Box::new(Ident::new(id.to_string())));
             }

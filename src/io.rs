@@ -2,7 +2,7 @@ use crate::ast::Node;
 use crate::visiters::ASTVisitor;
 
 pub struct WriteInt {
-    expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn Node>>,
 }
 
 impl WriteInt {
@@ -25,7 +25,7 @@ impl Node for WriteInt {
 }
 
 pub struct WriteChar {
-    expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn Node>>,
 }
 
 impl WriteChar {
@@ -48,7 +48,7 @@ impl Node for WriteChar {
 }
 
 pub struct WriteStr {
-    expr: String,
+    pub expr: String,
 }
 
 impl WriteStr {
@@ -67,7 +67,7 @@ impl Node for WriteStr {
 }
 
 pub struct ReadInt {
-    identifier: String,
+    pub identifier: String,
 }
 
 impl ReadInt {
@@ -86,7 +86,7 @@ impl Node for ReadInt {
 }
 
 pub struct ReadChar {
-    identifier: String,
+    pub identifier: String,
 }
 
 impl ReadChar {

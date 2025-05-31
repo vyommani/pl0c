@@ -2,6 +2,7 @@ use std::{fs::File, io::Read, path::Path, process::exit};
 
 pub mod ast;
 pub mod block;
+pub mod codegen;
 pub mod decl;
 pub mod expression;
 pub mod io;

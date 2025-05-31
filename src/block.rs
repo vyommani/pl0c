@@ -5,10 +5,10 @@ use crate::decl::VarDecl;
 use crate::visiters::ASTVisitor;
 
 pub struct Block {
-    const_decl: ConstDecl,
-    var_decl: VarDecl,
-    proc_decl: ProcDecl,
-    statement: Option<Box<dyn Node>>,
+    pub const_decl: ConstDecl,
+    pub var_decl: VarDecl,
+    pub proc_decl: ProcDecl,
+    pub statement: Option<Box<dyn Node>>,
 }
 
 impl Block {

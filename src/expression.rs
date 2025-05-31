@@ -58,7 +58,7 @@ impl Node for BinOp {
 }
 
 pub struct OddCondition {
-    expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn Node>>,
 }
 
 impl OddCondition {
@@ -79,9 +79,9 @@ impl Node for OddCondition {
 }
 
 pub struct RelationalCondition {
-    operator: String,
-    left: Option<Box<dyn Node>>,
-    right: Option<Box<dyn Node>>,
+    pub operator: String,
+    pub left: Option<Box<dyn Node>>,
+    pub right: Option<Box<dyn Node>>,
 }
 
 impl RelationalCondition {

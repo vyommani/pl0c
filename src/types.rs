@@ -13,7 +13,7 @@ impl Ident {
 
 impl Node for Ident {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_ident(self);
+        let _ = visitor.visit_ident(self);
     }
     fn print(&self) {
         print!("{}", &self.value);
@@ -31,7 +31,7 @@ impl Number {
 }
 impl Node for Number {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_number(self);
+        let _ = visitor.visit_number(self);
     }
     fn print(&self) {
         print!("{}", &self.value);

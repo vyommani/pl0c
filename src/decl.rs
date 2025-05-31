@@ -2,7 +2,7 @@ use crate::ast::Node;
 use crate::visiters::ASTVisitor;
 
 pub struct ProcDecl {
-    procedurs: Vec<(String, Option<Box<dyn Node>>)>,
+    pub procedurs: Vec<(String, Option<Box<dyn Node>>)>,
 }
 
 impl ProcDecl {
@@ -40,7 +40,7 @@ impl Node for ProcDecl {
 }
 
 pub struct VarDecl {
-    var_decl: Vec<String>,
+    pub var_decl: Vec<String>,
 }
 
 impl VarDecl {
@@ -76,7 +76,7 @@ impl Node for VarDecl {
 }
 
 pub struct ConstDecl {
-    const_decl: Vec<(String, i64)>,
+    pub const_decl: Vec<(String, i64)>,
 }
 
 impl ConstDecl {
