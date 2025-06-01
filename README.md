@@ -34,19 +34,14 @@ pl0
 var x, y, z;
 begin
     x := 1;
-    
     y := 2;
-    
     z := x + y;
-    
     if z > 2 then
         z := z - 1
     else
         z := z + 1;
-    
     while x < 10 do
-        x := x + 1;
-        
+        x := x + 1;        
 end.
 
 This sample program demonstrates variable declarations, assignments, conditionals, and loops in PL/0.
