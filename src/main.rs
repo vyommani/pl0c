@@ -12,38 +12,34 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let bytes: String;
     let mut state = pl0c::LineNumber::default();
     let mut symbol_table = SymbolTable::new();
 
     println!("pl0rs -- PL/0 compiler version {}", VERSION);
     println!("(c) Vyom Tewari, 2025 GPLv3");
 
-    let file_path = &args.path;
-    match read(file_path) {
-        Ok(file_content) => {
-            bytes = file_content;
-        }
+    let bytes = match read(&args.path) {
+        Ok(file_content) => file_content,
         Err(_) => {
-            println!("Error: No such file({}) found.", file_path.display());
+            println!("Error: No such file({}) found.", args.path.display());
             exit(1);
         }
-    }
+    };
 
-    match scan(&mut state, &bytes, &mut symbol_table) {
-        Ok(mut tokens) => {
-            //print!("Tokens: {:#?} ", tokens);
-            let ast = parse(&mut tokens, &mut symbol_table);
-            if let Some(ref ast) = ast {
-                ast.print();
-            }
-            let mut codegen = IRGenerator::new(symbol_table);
-            let _ = codegen.generate_code(ast);
-            let output = codegen.get_output();
-            println!("\n{}", output);
-        }
+    let mut tokens = match scan(&mut state, &bytes, &mut symbol_table) {
+        Ok(tokens) => tokens,
         Err(e) => {
             println!("{e}");
+            exit(1);
         }
+    };
+
+    let ast = parse(&mut tokens, &mut symbol_table);
+    let mut codegen = IRGenerator::new(symbol_table);
+    if let Err(e) = codegen.generate_code(ast) {
+        eprintln!("Code generation error: {e}");
+        exit(1);
     }
+    let output = codegen.get_output();
+    println!("\n{}", output);
 }
