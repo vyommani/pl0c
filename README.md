@@ -34,23 +34,29 @@ pl0
 var x, y, z;
 begin
     x := 1;
+    
     y := 2;
+    
     z := x + y;
+    
     if z > 2 then
         z := z - 1
     else
         z := z + 1;
+    
     while x < 10 do
         x := x + 1;
+        
 end.
 
 This sample program demonstrates variable declarations, assignments, conditionals, and loops in PL/0.
+
 Features
 
     Lexer: Converts source code into tokens.
     Parser: Parses tokens into an abstract syntax tree (AST).
     AST: Represents the program's structure in a tree format.
-    Code Generator: Translates the AST into PL/0 to IR(work in progress).
+    Code Generator: Translates the AST into IR(work in progress).
 
 Directory Structure
 
