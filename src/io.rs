@@ -13,7 +13,9 @@ impl WriteInt {
 
 impl Node for WriteInt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_write_int(self);
+        if let Err(e) = visitor.visit_write_int(self) {
+            eprintln!("Error visiting writeInt node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("writeInt(");
@@ -36,7 +38,9 @@ impl WriteChar {
 
 impl Node for WriteChar {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_write_char(self);
+        if let Err(e) = visitor.visit_write_char(self) {
+            eprintln!("Error visiting writeChar node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("writeInt(");
@@ -59,7 +63,9 @@ impl WriteStr {
 
 impl Node for WriteStr {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_write_str(self);
+        if let Err(e) = visitor.visit_write_str(self) {
+            eprintln!("Error visiting writeStr node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("writeStr({})", &self.expr);
@@ -78,7 +84,9 @@ impl ReadInt {
 
 impl Node for ReadInt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_read_int(self);
+        if let Err(e) = visitor.visit_read_int(self) {
+            eprintln!("Error visiting readInt node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("readInt({})", &self.identifier);
@@ -97,7 +105,9 @@ impl ReadChar {
 
 impl Node for ReadChar {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_read_char(self);
+        if let Err(e) = visitor.visit_read_char(self) {
+            eprintln!("Error visiting readChar node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("readChar({})", &self.identifier);

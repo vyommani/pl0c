@@ -29,7 +29,9 @@ impl Block {
 
 impl Node for Block {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_block(self);
+        if let Err(e) = visitor.visit_block(self) {
+            eprintln!("Error visiting block node: {:?}", e);
+        }
     }
 
     fn print(&self) {

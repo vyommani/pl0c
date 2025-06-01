@@ -44,7 +44,9 @@ impl Variable {
 
 impl Node for Variable {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_variable(self);
+        if let Err(e) = visitor.visit_variable(self) {
+            eprintln!("Error visiting variable node: {:?}", e);
+        }
     }
 
     fn print(&self) {
@@ -64,7 +66,9 @@ impl Exit {
 
 impl Node for Exit {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_exit(self);
+        if let Err(e) = visitor.visit_exit(self) {
+            eprintln!("Error visiting exit node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("exit ");

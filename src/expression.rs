@@ -23,7 +23,9 @@ impl BinOp {
 
 impl Node for BinOp {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_binary_operation(self);
+        if let Err(e) = visitor.visit_binary_operation(self) {
+            eprintln!("Error visiting binary operation node: {:?}", e);
+        }
     }
 
     fn print(&self) {
@@ -68,7 +70,9 @@ impl OddCondition {
 }
 impl Node for OddCondition {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_condition(self);
+        if let Err(e) = visitor.visit_condition(self) {
+            eprintln!("Error visiting odd condition node: {:?}", e);
+        }
     }
     fn print(&self) {
         print!("odd ");
@@ -100,7 +104,9 @@ impl RelationalCondition {
 
 impl Node for RelationalCondition {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_relational_condition(self);
+        if let Err(e) = visitor.visit_relational_condition(self) {
+            eprintln!("Error visiting relational condition node: {:?}", e);
+        }
     }
     fn print(&self) {
         if let Some(left) = &self.left {

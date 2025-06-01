@@ -14,7 +14,9 @@ impl Program {
 
 impl Node for Program {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        let _ = visitor.visit_program(self);
+        if let Err(e) = visitor.visit_program(self) {
+            eprintln!("Error visiting program node: {:?}", e);
+        }
     }
     fn print(&self) {
         if let Some(block) = &self.block {

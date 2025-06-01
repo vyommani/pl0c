@@ -18,7 +18,9 @@ impl ProcDecl {
 
 impl Node for ProcDecl {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_proc_decl(self);
+        if let Err(e) = visitor.visit_proc_decl(self) {
+            eprintln!("Error visiting proc decl node: {:?}", e);
+        }
     }
     fn print(&self) {
         let mut first = true;
@@ -56,7 +58,9 @@ impl VarDecl {
 
 impl Node for VarDecl {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_var_decl(self);
+        if let Err(e) = visitor.visit_var_decl(self) {
+            eprintln!("Error visiting var decl node: {:?}", e);
+        }
     }
     fn print(&self) {
         let mut first = true;
@@ -92,7 +96,9 @@ impl ConstDecl {
 
 impl Node for ConstDecl {
     fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        visitor.visit_const(self);
+        if let Err(e) = visitor.visit_const(self) {
+            eprintln!("Error visiting cons node: {:?}", e);
+        }
     }
     fn print(&self) {
         let mut first = true;
