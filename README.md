@@ -50,7 +50,7 @@ Features
     Lexer: Converts source code into tokens.
     Parser: Parses tokens into an abstract syntax tree (AST).
     AST: Represents the program's structure in a tree format.
-    Code Generator: Translates the AST into PL/0 assembly code.
+    Code Generator: Translates the AST into PL/0 to IR(work in progress).
 
 Directory Structure
 
@@ -59,11 +59,17 @@ css
 src/
 
 1-> ast.rs
-2-> code_generator.rs
+
+2-> codegen.rs
+
 3-> lexer.rs
+
 4-> main.rs
+
 5-> parser.rs
+
 6-> token.rs
+
 7-> lib.rs
 
     main.rs: Entry point of the application.
