@@ -12,10 +12,8 @@ impl WriteInt {
 }
 
 impl Node for WriteInt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_write_int(self) {
-            eprintln!("Error visiting writeInt node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_write_int(self)
     }
     fn print(&self) {
         print!("writeInt(");
@@ -37,13 +35,11 @@ impl WriteChar {
 }
 
 impl Node for WriteChar {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_write_char(self) {
-            eprintln!("Error visiting writeChar node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_write_char(self)
     }
     fn print(&self) {
-        print!("writeInt(");
+        print!("writeChar(");
         if let Some(expr) = &self.expr {
             expr.print();
         }
@@ -62,13 +58,11 @@ impl WriteStr {
 }
 
 impl Node for WriteStr {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_write_str(self) {
-            eprintln!("Error visiting writeStr node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_write_str(self)
     }
     fn print(&self) {
-        print!("writeStr({})", &self.expr);
+        print!("writeStr({})", self.expr);
     }
 }
 
@@ -83,13 +77,11 @@ impl ReadInt {
 }
 
 impl Node for ReadInt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_read_int(self) {
-            eprintln!("Error visiting readInt node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_read_int(self)
     }
     fn print(&self) {
-        print!("readInt({})", &self.identifier);
+        print!("readInt({})", self.identifier)
     }
 }
 
@@ -104,12 +96,10 @@ impl ReadChar {
 }
 
 impl Node for ReadChar {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_read_char(self) {
-            eprintln!("Error visiting readChar node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_read_char(self)
     }
     fn print(&self) {
-        print!("readChar({})", &self.identifier);
+        print!("readChar({})", self.identifier);
     }
 }

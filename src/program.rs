@@ -13,11 +13,10 @@ impl Program {
 }
 
 impl Node for Program {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_program(self) {
-            eprintln!("Error visiting program node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_program(self)
     }
+
     fn print(&self) {
         if let Some(block) = &self.block {
             block.print();

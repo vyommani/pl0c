@@ -12,13 +12,11 @@ impl Ident {
 }
 
 impl Node for Ident {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) =  visitor.visit_ident(self) {
-            eprintln!("Error visiting ident node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_ident(self)
     }
     fn print(&self) {
-        print!("{}", &self.value);
+        print!("{}", self.value);
     }
 }
 
@@ -32,12 +30,10 @@ impl Number {
     }
 }
 impl Node for Number {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_number(self) {
-            eprintln!("Error visiting number node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_number(self)
     }
     fn print(&self) {
-        print!("{}", &self.value);
+        print!("{}", self.value);
     }
 }

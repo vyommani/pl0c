@@ -26,7 +26,7 @@
 use crate::visiters::ASTVisitor;
 
 pub trait Node {
-    fn accept(&self, visitor: &mut dyn ASTVisitor);
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String>;
     fn print(&self);
 }
 
@@ -43,10 +43,8 @@ impl Variable {
 }
 
 impl Node for Variable {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_variable(self) {
-            eprintln!("Error visiting variable node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_variable(self)
     }
 
     fn print(&self) {
@@ -55,7 +53,7 @@ impl Node for Variable {
 }
 
 pub struct Exit {
-    expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn Node>>,
 }
 
 impl Exit {
@@ -65,10 +63,8 @@ impl Exit {
 }
 
 impl Node for Exit {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_exit(self) {
-            eprintln!("Error visiting exit node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_exit(self)
     }
     fn print(&self) {
         print!("exit ");

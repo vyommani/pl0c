@@ -17,10 +17,8 @@ impl ProcDecl {
 }
 
 impl Node for ProcDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_proc_decl(self) {
-            eprintln!("Error visiting proc decl node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_proc_decl(self)
     }
     fn print(&self) {
         let mut first = true;
@@ -57,10 +55,8 @@ impl VarDecl {
 }
 
 impl Node for VarDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_var_decl(self) {
-            eprintln!("Error visiting var decl node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_var_decl(self)
     }
     fn print(&self) {
         let mut first = true;
@@ -95,21 +91,21 @@ impl ConstDecl {
 }
 
 impl Node for ConstDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_const(self) {
-            eprintln!("Error visiting cons node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_const(self)
     }
     fn print(&self) {
         let mut first = true;
-        for (id, num) in &self.const_decl {
+        for tuple in &self.const_decl {
             if first {
                 first = false;
                 print!("const ");
             } else {
                 print!(", ");
             }
-            print!("{} = {}", id, num);
+            if let (name, value) = tuple {
+                print!("{} = {}", name, value);
+            }
         }
         if !first {
             println!(";");

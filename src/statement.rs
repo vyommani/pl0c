@@ -13,10 +13,8 @@ impl AssignStmt {
 }
 
 impl Node for AssignStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_assign(self) {
-            eprintln!("Error visiting assign node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_assign(self)
     }
 
     fn print(&self) {
@@ -39,10 +37,8 @@ impl BeginStmt {
 }
 
 impl Node for BeginStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_begin(self) {
-            eprintln!("Error visiting begin node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_begin(self)
     }
     fn print(&self) {
         println!("begin");
@@ -76,10 +72,8 @@ impl IfStmt {
 }
 
 impl Node for IfStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_if(self) {
-            eprintln!("Error visiting if node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_if(self)
     }
     fn print(&self) {
         if let Some(condition) = &self.condition {
@@ -87,7 +81,7 @@ impl Node for IfStmt {
             condition.print();
         }
         if let Some(then_branch) = &self.then_branch {
-            println!(" than");
+            println!(" then");
             then_branch.print();
         }
         if let Some(else_branch) = &self.else_branch {
@@ -108,10 +102,8 @@ impl WhileStatement {
     }
 }
 impl Node for WhileStatement {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_while_statement(self) {
-            eprintln!("Error visiting while statement node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_while_statement(self)
     }
     fn print(&self) {
         if let Some(condition) = &self.condition {
@@ -135,10 +127,8 @@ impl CallStmt {
     }
 }
 impl Node for CallStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) {
-        if let Err(e) = visitor.visit_call(self) {
-            eprintln!("Error visiting call node: {:?}", e);
-        }
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+        visitor.visit_call(self)
     }
     fn print(&self) {
         print!("call {}", &self.identifier);

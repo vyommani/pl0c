@@ -14,6 +14,7 @@ pub mod symboltable;
 pub mod token;
 pub mod types;
 pub mod visiters;
+pub mod assembly_generator;
 
 pub const VERSION: &str = "0.1.1";
 
