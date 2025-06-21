@@ -154,7 +154,6 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             let block = block(iter, table);
             expect(Token::Semicolon, iter);
             procedurs.push((name, block));
-            table.drop_scope();
         }
         proc_decl = ProcDecl::new(procedurs);
         let stmt = statement(iter, table);
