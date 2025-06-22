@@ -10,7 +10,6 @@ use crate::{
     types::{Ident, Number},
     visiters::ASTVisitor,
 };
-use std::collections::HashMap;
 
 pub struct IRGenerator {
     label_counter: i32,
@@ -18,31 +17,16 @@ pub struct IRGenerator {
     data_output: String,
     text_output: String,
     symbol_table: SymbolTable,
-    op_map: HashMap<String, &'static str>,
 }
 
 impl IRGenerator {
     pub fn new(table: SymbolTable) -> Self {
-        let mut op_map = HashMap::new();
-        op_map.insert("Plus".to_string(), "+");
-        op_map.insert("Minus".to_string(), "-");
-        op_map.insert("Multiply".to_string(), "*");
-        op_map.insert("Divide".to_string(), "/");
-        op_map.insert("Equal".to_string(), "==");
-        op_map.insert("!=".to_string(), "cmp_ne");
-        op_map.insert("LessThan".to_string(), "<");
-        op_map.insert("LessThanEqual".to_string(), "<=");
-        op_map.insert("GreaterThan".to_string(), ">");
-        op_map.insert("GreaterThanEqual".to_string(), ">=");
-        op_map.insert("Hash".to_string(), "#");
-
         Self {
             symbol_table: table,
             label_counter: 0,
             vreg_counter: 0,
-            data_output: String::with_capacity(1024), // Pre-allocate capacity
-            text_output: String::with_capacity(4096), // Pre-allocate capacity
-            op_map,
+            data_output: String::with_capacity(1024),
+            text_output: String::with_capacity(4096),
         }
     }
 
