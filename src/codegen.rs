@@ -53,7 +53,7 @@ impl IRGenerator {
     }
 
     fn create_label(&mut self) -> String {
-        let label = format!(".L{}", self.label_counter);
+        let label = format!("L{}", self.label_counter);
         self.label_counter += 1;
         label
     }
@@ -86,7 +86,7 @@ impl IRGenerator {
     fn write_console_output(&mut self, data: &str, len: usize) -> Result<(), String> {
         let label = self.create_label();
         self.data_output
-            .push_str(&format!("{}: db \"{}\", 0\n", label, data));
+            .push_str(&format!("{} db \"{}\", 0\n", label, data));
         self.text_output.push_str(&format!(
             "    mov rax, 1\n    mov rdi, 1\n    mov rsi, {}\n    mov rdx, {}\n    syscall\n",
             label, len
