@@ -91,7 +91,12 @@ impl SymbolTable {
     }
 
     /// Type check a symbol by name and expected type. Returns Ok(()) if found, Err otherwise.
-    pub fn type_check(&self, name: &str, symbol_type: SymbolType, line_number: usize) -> Result<(), String> {
+    pub fn type_check(
+        &self,
+        name: &str,
+        symbol_type: SymbolType,
+        line_number: usize,
+    ) -> Result<(), String> {
         if self.scopes.is_empty() {
             return Err(format!("Invalid keyword: {}", name));
         }
