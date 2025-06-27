@@ -12,7 +12,7 @@ use crate::{
 };
 
 // Intermediate Representation (IR) generator for PL/0 compiler.
-// 
+//
 // This struct is responsible for generating IR code from an AST.
 // It uses virtual registers and generates architecture-independent IR
 // that can be later processed by a register allocator and backend.
@@ -24,6 +24,7 @@ pub struct IRGenerator {
     text_output: String,
     vreg_prefix: String,
     symbol_table: SymbolTable,
+    exit_emitted: bool,
 }
 
 impl IRGenerator {
@@ -36,6 +37,7 @@ impl IRGenerator {
             bss_output: String::with_capacity(256),
             text_output: String::with_capacity(4096),
             vreg_prefix: "v".to_string(),
+            exit_emitted: false,
         }
     }
 
@@ -70,8 +72,12 @@ impl IRGenerator {
     }
 
     pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Result<(), String> {
+        self.exit_emitted = false;
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
             .accept(self)?;
+        if !self.exit_emitted {
+            self.system_exit(0);
+        }
         Ok(())
     }
 
@@ -539,7 +545,8 @@ impl ASTVisitor for IRGenerator {
             return Err("WriteStr statement missing expression".to_string());
         }
         // Generate pure IR instruction
-        self.text_output.push_str(&format!("    write_str \"{}\"\n", stmt.expr));
+        self.text_output
+            .push_str(&format!("    write_str \"{}\"\n", stmt.expr));
         Ok(())
     }
 
@@ -570,6 +577,7 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_exit(&mut self, _expr: &Exit) -> Result<(), String> {
+        self.exit_emitted = true;
         self.text_output.push_str("    mov rax, 60\n");
         self.text_output.push_str("    mov rdi, 0\n");
         self.text_output.push_str("    syscall\n");
@@ -588,12 +596,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
-            let vreg = self.allocate_virtual_register();
-            self.text_output.push_str(&format!("    mov {}, 0\n", vreg));
-
-            self.text_output
-                .push_str(&format!("    mov [{}], {}\n", var_name, vreg));
-
+            // Only update the symbol table; do not emit mov instructions for initialization
             self.update_symbol_location(
                 var_name,
                 SymbolLocation::GlobalLabel(var_name.clone()),
