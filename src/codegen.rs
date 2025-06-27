@@ -15,7 +15,9 @@ pub struct IRGenerator {
     label_counter: i32,
     vreg_counter: i32,
     data_output: String,
+    bss_output: String,
     text_output: String,
+    vreg_prefix: String,
     symbol_table: SymbolTable,
 }
 
@@ -26,12 +28,14 @@ impl IRGenerator {
             label_counter: 0,
             vreg_counter: 0,
             data_output: String::with_capacity(1024),
+            bss_output: String::with_capacity(256),
             text_output: String::with_capacity(4096),
+            vreg_prefix: "v".to_string(),
         }
     }
 
     fn allocate_virtual_register(&mut self) -> String {
-        let vreg = format!("v{}", self.vreg_counter);
+        let vreg = format!("{}{}", self.vreg_prefix, self.vreg_counter);
         self.vreg_counter += 1;
         vreg
     }
@@ -43,12 +47,17 @@ impl IRGenerator {
     }
 
     pub fn get_output(&self) -> String {
-        let mut output =
-            String::with_capacity(self.data_output.len() + self.text_output.len() + 100);
+        let mut output = String::with_capacity(
+            self.data_output.len() + self.bss_output.len() + self.text_output.len() + 100,
+        );
 
         if !self.data_output.is_empty() {
             output.push_str("section .data\n");
             output.push_str(&self.data_output);
+        }
+        if !self.bss_output.is_empty() {
+            output.push_str("section .bss\n");
+            output.push_str(&self.bss_output);
         }
         output.push_str("global _start\nsection .text\n_start:\n");
         output.push_str(&self.text_output);
@@ -62,12 +71,12 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn emit_expression(&mut self, expr: &dyn crate::ast::Node) -> String {
-        expr.accept(self).expect("Failed to generate expression");
-        format!("v{}", self.vreg_counter - 1)
+    fn emit_expression(&mut self, expr: &dyn crate::ast::Node) -> Result<String, String> {
+        expr.accept(self)?;
+        Ok(format!("v{}", self.vreg_counter - 1))
     }
 
-    fn write_console_output(&mut self, data: &str, len: usize) -> Result<(), String> {
+    fn emit_print_string(&mut self, data: &str, len: usize) -> Result<(), String> {
         let label = self.create_label();
         self.data_output
             .push_str(&format!("{} db \"{}\", 0\n", label, data));
@@ -79,7 +88,10 @@ impl IRGenerator {
     }
 
     fn system_exit(&mut self, code: i32) {
-        self.text_output.push_str(&format!("    mov rax, 60\n    mov rdi, {}\n    syscall\n", code));
+        self.text_output.push_str(&format!(
+            "    mov rax, 60\n    mov rdi, {}\n    syscall\n",
+            code
+        ));
     }
 
     /// Helper function to generate load instruction based on symbol location
@@ -257,8 +269,8 @@ impl ASTVisitor for IRGenerator {
             .ok_or_else(|| "Binary operation missing right operand".to_string())?;
 
         // Generate expressions first and store results
-        let left_result = self.emit_expression(left_vreg.as_ref());
-        let right_result = self.emit_expression(right_vreg.as_ref());
+        let left_result = self.emit_expression(left_vreg.as_ref())?;
+        let right_result = self.emit_expression(right_vreg.as_ref())?;
 
         let result_vreg = self.allocate_virtual_register();
         match binop.operator.as_str() {
@@ -302,7 +314,7 @@ impl ASTVisitor for IRGenerator {
             .condition
             .as_ref()
             .ok_or_else(|| "While statement missing condition".to_string())?;
-        let cond_vreg = self.emit_expression(condition.as_ref());
+        let cond_vreg = self.emit_expression(condition.as_ref())?;
         self.text_output
             .push_str(&format!("    cmp {}, 0\n", cond_vreg));
         self.text_output
@@ -322,7 +334,7 @@ impl ASTVisitor for IRGenerator {
             .expr
             .as_ref()
             .ok_or_else(|| "OddCondition missing expression".to_string())?;
-        let num_reg = self.emit_expression(expr.as_ref());
+        let num_reg = self.emit_expression(expr.as_ref())?;
         let temp_reg = self.allocate_virtual_register();
         let remainder_reg = self.allocate_virtual_register();
 
@@ -356,8 +368,8 @@ impl ASTVisitor for IRGenerator {
             .ok_or_else(|| "Relational condition missing right operand".to_string())?;
 
         // Generate expressions first and store results
-        let left_result = self.emit_expression(left.as_ref());
-        let right_result = self.emit_expression(right.as_ref());
+        let left_result = self.emit_expression(left.as_ref())?;
+        let right_result = self.emit_expression(right.as_ref())?;
 
         let result_vreg = self.allocate_virtual_register();
         match cond.operator.as_str() {
@@ -461,7 +473,7 @@ impl ASTVisitor for IRGenerator {
             .expr
             .as_ref()
             .ok_or_else(|| "Assign statement missing expression".to_string())?;
-        let vreg = self.emit_expression(expr.as_ref());
+        let vreg = self.emit_expression(expr.as_ref())?;
         self.emit_store_to_symbol(&symbol, &vreg, &stmt.identifier)?;
 
         Ok(())
@@ -483,7 +495,7 @@ impl ASTVisitor for IRGenerator {
             .condition
             .as_ref()
             .ok_or_else(|| "If statement missing condition".to_string())?;
-        let cond_vreg = self.emit_expression(condition.as_ref());
+        let cond_vreg = self.emit_expression(condition.as_ref())?;
         self.text_output
             .push_str(&format!("    cmp {}, 0\n", cond_vreg));
         self.text_output
@@ -509,7 +521,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_write_int(&mut self, stmt: &WriteInt) -> Result<(), String> {
         if let Some(ref expr) = stmt.expr {
-            let vreg = self.emit_expression(expr.as_ref());
+            let vreg = self.emit_expression(expr.as_ref())?;
             self.text_output
                 .push_str(&format!("    write_int {}\n", vreg));
             Ok(())
@@ -520,7 +532,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_write_char(&mut self, stmt: &WriteChar) -> Result<(), String> {
         if let Some(ref expr) = stmt.expr {
-            let vreg = self.emit_expression(expr.as_ref());
+            let vreg = self.emit_expression(expr.as_ref())?;
             self.text_output
                 .push_str(&format!("    write_char {}\n", vreg));
             Ok(())
@@ -533,7 +545,7 @@ impl ASTVisitor for IRGenerator {
         if stmt.expr.is_empty() {
             return Err("WriteStr statement missing expression".to_string());
         }
-        self.write_console_output(&stmt.expr, stmt.expr.len())
+        self.emit_print_string(&stmt.expr, stmt.expr.len())
             .map_err(|e| format!("Failed to write string: {}", e))?;
         Ok(())
     }
