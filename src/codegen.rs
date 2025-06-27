@@ -11,6 +11,11 @@ use crate::{
     visiters::ASTVisitor,
 };
 
+// Intermediate Representation (IR) generator for PL/0 compiler.
+// 
+// This struct is responsible for generating IR code from an AST.
+// It uses virtual registers and generates architecture-independent IR
+// that can be later processed by a register allocator and backend.
 pub struct IRGenerator {
     label_counter: i32,
     vreg_counter: i32,
@@ -67,24 +72,12 @@ impl IRGenerator {
     pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Result<(), String> {
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
             .accept(self)?;
-        self.system_exit(0); // by default Exit with code 0
         Ok(())
     }
 
     fn emit_expression(&mut self, expr: &dyn crate::ast::Node) -> Result<String, String> {
         expr.accept(self)?;
         Ok(format!("v{}", self.vreg_counter - 1))
-    }
-
-    fn emit_print_string(&mut self, data: &str, len: usize) -> Result<(), String> {
-        let label = self.create_label();
-        self.data_output
-            .push_str(&format!("{} db \"{}\", 0\n", label, data));
-        self.text_output.push_str(&format!(
-            "    mov rax, 1\n    mov rdi, 1\n    mov rsi, {}\n    mov rdx, {}\n    syscall\n",
-            label, len
-        ));
-        Ok(())
     }
 
     fn system_exit(&mut self, code: i32) {
@@ -545,8 +538,8 @@ impl ASTVisitor for IRGenerator {
         if stmt.expr.is_empty() {
             return Err("WriteStr statement missing expression".to_string());
         }
-        self.emit_print_string(&stmt.expr, stmt.expr.len())
-            .map_err(|e| format!("Failed to write string: {}", e))?;
+        // Generate pure IR instruction
+        self.text_output.push_str(&format!("    write_str \"{}\"\n", stmt.expr));
         Ok(())
     }
 
