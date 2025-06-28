@@ -11,6 +11,7 @@ use crate::{
     visiters::ASTVisitor,
 };
 use std::collections::HashMap;
+use std::fmt::Write;
 
 pub struct IRGenerator {
     label_counter: i32,
@@ -21,7 +22,6 @@ pub struct IRGenerator {
     vreg_prefix: String,
     symbol_table: SymbolTable,
     exit_emitted: bool,
-    variable_registers: Vec<HashMap<String, String>>, // scoped variable_name -> virtual_register mapping
 }
 
 impl IRGenerator {
@@ -35,7 +35,6 @@ impl IRGenerator {
             text_output: String::with_capacity(4096),
             vreg_prefix: "v".to_string(),
             exit_emitted: false,
-            variable_registers: vec![HashMap::new()], // Start with global scope
         }
     }
 
@@ -53,19 +52,16 @@ impl IRGenerator {
 
     pub fn get_output(&self) -> String {
         let mut output = String::new();
-        
         // Add constants as IR data declarations
         if !self.data_output.is_empty() {
             output.push_str(&self.data_output);
             output.push('\n');
         }
-        
         // Add global variables as IR data declarations
         if !self.bss_output.is_empty() {
             output.push_str(&self.bss_output);
             output.push('\n');
         }
-        
         // Add the main IR code
         output.push_str(&self.text_output);
         output
@@ -73,8 +69,6 @@ impl IRGenerator {
 
     pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Result<(), String> {
         self.exit_emitted = false;
-        // Reset to global scope for new program
-        self.variable_registers = vec![HashMap::new()];
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
             .accept(self)?;
         if !self.exit_emitted {
@@ -88,7 +82,7 @@ impl IRGenerator {
     }
 
     fn system_exit(&mut self, code: i32) {
-        self.text_output.push_str(&format!("    exit {}\n", code));
+        write!(self.text_output, "    exit {}\n", code).unwrap();
     }
 
     // Helper function to generate load instruction based on symbol location
@@ -101,20 +95,16 @@ impl IRGenerator {
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
                 // Local variable on stack
-                self.text_output
-                    .push_str(&format!("    ld {}, [bp-{}]\n", target_vreg, offset));
+                write!(self.text_output, "    ld {}, [bp-{}]\n", target_vreg, offset).unwrap();
             }
             SymbolLocation::GlobalLabel(label) => {
-                self.text_output
-                    .push_str(&format!("    ld {}, [{}]\n", target_vreg, label));
+                write!(self.text_output, "    ld {}, [{}]\n", target_vreg, label).unwrap();
             }
             SymbolLocation::Immediate(value) => {
-                self.text_output
-                    .push_str(&format!("    li {}, {}\n", target_vreg, value));
+                write!(self.text_output, "    li {}, {}\n", target_vreg, value).unwrap();
             }
             SymbolLocation::None => {
-                self.text_output
-                    .push_str(&format!("    ld {}, [{}]\n", target_vreg, fallback_name));
+                write!(self.text_output, "    ld {}, [{}]\n", target_vreg, fallback_name).unwrap();
             }
         }
         Ok(())
@@ -130,18 +120,15 @@ impl IRGenerator {
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
                 // Store to local variable on stack
-                self.text_output
-                    .push_str(&format!("    st [bp-{}], {}\n", offset, source_vreg));
+                write!(self.text_output, "    st [bp-{}], {}\n", offset, source_vreg).unwrap();
             }
             SymbolLocation::GlobalLabel(label) => {
                 // Store to global variable
-                self.text_output
-                    .push_str(&format!("    st [{}], {}\n", label, source_vreg));
+                write!(self.text_output, "    st [{}], {}\n", label, source_vreg).unwrap();
             }
             SymbolLocation::None => {
                 // Fallback: use name as label (for backward compatibility)
-                self.text_output
-                    .push_str(&format!("    st [{}], {}\n", fallback_name, source_vreg));
+                write!(self.text_output, "    st [{}], {}\n", fallback_name, source_vreg).unwrap();
             }
             SymbolLocation::Immediate(_) => {
                 return Err(format!(
@@ -215,16 +202,14 @@ impl ASTVisitor for IRGenerator {
         match symbol.symbol_type {
             SymbolType::Constant(value) => {
                 let vreg = self.allocate_virtual_register();
-                self.text_output
-                    .push_str(&format!("    li {}, {}\n", vreg, value));
+                write!(self.text_output, "    li {}, {}\n", vreg, value).unwrap();
                 Ok(vreg)
             }
             SymbolType::Procedure => {
                 let vreg = self.allocate_virtual_register();
                 match &symbol.location {
                     SymbolLocation::GlobalLabel(label) => {
-                        self.text_output
-                            .push_str(&format!("    la {}, {}\n", vreg, label));
+                        write!(self.text_output, "    la {}, {}\n", vreg, label).unwrap();
                     }
                     _ => {
                         return Err(format!("Procedure {} has no valid address", ident.value));
@@ -254,8 +239,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_number(&mut self, number: &Number) -> Result<String, String> {
         let vreg = self.allocate_virtual_register();
-        self.text_output
-            .push_str(&format!("    li {}, {}\n", vreg, number.value));
+        write!(self.text_output, "    li {}, {}\n", vreg, number.value).unwrap();
         Ok(vreg)
     }
 
@@ -283,28 +267,16 @@ impl ASTVisitor for IRGenerator {
         let result_vreg = self.allocate_virtual_register();
         match binop.operator.as_str() {
             "Plus" => {
-                self.text_output.push_str(&format!(
-                    "    add {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    add {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "Minus" => {
-                self.text_output.push_str(&format!(
-                    "    sub {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    sub {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "Multiply" => {
-                self.text_output.push_str(&format!(
-                    "    mul {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    mul {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "Divide" => {
-                self.text_output.push_str(&format!(
-                    "    div {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    div {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             _ => return Err(format!("Unknown operator: {}", binop.operator)),
         }
@@ -314,23 +286,19 @@ impl ASTVisitor for IRGenerator {
     fn visit_while_statement(&mut self, stmt: &WhileStatement) -> Result<(), String> {
         let start_label = self.create_label();
         let end_label = self.create_label();
-        self.text_output.push_str(&format!("{}:\n", start_label));
+        write!(self.text_output, "{}:\n", start_label).unwrap();
         let condition = stmt
             .condition
             .as_ref()
             .ok_or_else(|| "While statement missing condition".to_string())?;
         let cond_vreg = self.emit_expression(condition.as_ref())?;
-        self.text_output.push_str(&format!(
-            "    beqz {}, {}\n",
-            cond_vreg, end_label
-        ));
+        write!(self.text_output, "    beqz {}, {}\n", cond_vreg, end_label).unwrap();
         stmt.body
             .as_ref()
             .ok_or_else(|| "While statement missing body".to_string())?
             .accept(self)?;
-        self.text_output
-            .push_str(&format!("    jump {}\n", start_label));
-        self.text_output.push_str(&format!("{}:\n", end_label));
+        write!(self.text_output, "    jump {}\n", start_label).unwrap();
+        write!(self.text_output, "{}:\n", end_label).unwrap();
         Ok(())
     }
 
@@ -341,8 +309,7 @@ impl ASTVisitor for IRGenerator {
             .ok_or_else(|| "OddCondition missing expression".to_string())?;
         let num_reg = self.emit_expression(expr.as_ref())?;
         let result_reg = self.allocate_virtual_register();
-        self.text_output
-            .push_str(&format!("    is_odd {}, {}\n", result_reg, num_reg));
+        write!(self.text_output, "    is_odd {}, {}\n", result_reg, num_reg).unwrap();
         Ok(result_reg)
     }
 
@@ -355,7 +322,6 @@ impl ASTVisitor for IRGenerator {
             .right
             .as_ref()
             .ok_or_else(|| "Relational condition missing right operand".to_string())?;
-
         // Generate expressions first and store results
         let left_result = self.emit_expression(left.as_ref())?;
         let right_result = self.emit_expression(right.as_ref())?;
@@ -363,46 +329,25 @@ impl ASTVisitor for IRGenerator {
         let result_vreg = self.allocate_virtual_register();
         match cond.operator.as_str() {
             "GreaterThan" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_gt {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_gt {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "LessThan" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_lt {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_lt {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "Equal" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_eq {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_eq {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "GreaterThanEqual" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_ge {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_ge {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "LessThanEqual" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_le {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_le {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "!=" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_ne {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_ne {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             "Hash" => {
-                self.text_output.push_str(&format!(
-                    "    cmp_ne {}, {}, {}\n",
-                    result_vreg, left_result, right_result
-                ));
+                write!(self.text_output, "    cmp_ne {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
             }
             _ => return Err(format!("Unknown relational operator: {}", cond.operator)),
         }
@@ -411,23 +356,17 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_call(&mut self, call: &CallStmt) -> Result<(), String> {
         let symbol = self.get_procedure_symbol(&call.identifier, "procedure")?;
-
-        match &symbol.location {
-            SymbolLocation::GlobalLabel(label) => {
-                self.text_output.push_str(&format!("    call {}\n", label));
-            }
-            SymbolLocation::None => {
-                self.text_output
-                    .push_str(&format!("    call {}\n", call.identifier));
-            }
-            _ => {
-                return Err(format!(
-                    "Procedure {} has no valid address",
-                    call.identifier
-                ));
-            }
+        // Extract label or None before mutably borrowing self
+        let label_opt = match &symbol.location {
+            SymbolLocation::GlobalLabel(label) => Some(label.clone()),
+            SymbolLocation::None => None,
+            _ => return Err(format!("Procedure {} has no valid address", call.identifier)),
+        };
+        if let Some(label) = label_opt {
+            write!(self.text_output, "    call {}\n", label).unwrap();
+        } else {
+            write!(self.text_output, "    call {}\n", call.identifier).unwrap();
         }
-
         Ok(())
     }
 
@@ -464,10 +403,7 @@ impl ASTVisitor for IRGenerator {
         let cond_vreg = self.emit_expression(condition.as_ref())?;
 
         // Emit pure IR instructions for conditional branching
-        self.text_output.push_str(&format!(
-            "    beqz {}, {}\n",
-            cond_vreg, else_label
-        ));
+        write!(self.text_output, "    beqz {}, {}\n", cond_vreg, else_label).unwrap();
 
         let then_branch = expr
             .then_branch
@@ -477,17 +413,15 @@ impl ASTVisitor for IRGenerator {
 
         if let Some(ref else_branch) = expr.else_branch {
             // Jump over else branch
-            self.text_output
-                .push_str(&format!("    jump {}\n", end_label));
-            self.text_output.push_str(&format!("{}:\n", else_label));
+            write!(self.text_output, "    jump {}\n", end_label).unwrap();
+            write!(self.text_output, "{}:\n", else_label).unwrap();
             else_branch.accept(self)?;
-            self.text_output.push_str(&format!("{}:\n", end_label));
+            write!(self.text_output, "{}:\n", end_label).unwrap();
         } else {
             // No else branch: jump to end after then branch
-            self.text_output
-                .push_str(&format!("    jump {}\n", end_label));
-            self.text_output.push_str(&format!("{}:\n", else_label));
-            self.text_output.push_str(&format!("{}:\n", end_label));
+            write!(self.text_output, "    jump {}\n", end_label).unwrap();
+            write!(self.text_output, "{}:\n", else_label).unwrap();
+            write!(self.text_output, "{}:\n", end_label).unwrap();
         }
         Ok(())
     }
@@ -495,8 +429,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_write_int(&mut self, stmt: &WriteInt) -> Result<(), String> {
         if let Some(ref expr) = stmt.expr {
             let vreg = self.emit_expression(expr.as_ref())?;
-            self.text_output
-                .push_str(&format!("    write_int {}\n", vreg));
+            write!(self.text_output, "    write_int {}\n", vreg).unwrap();
             Ok(())
         } else {
             Err("WriteInt statement missing expression".to_string())
@@ -506,8 +439,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_write_char(&mut self, stmt: &WriteChar) -> Result<(), String> {
         if let Some(ref expr) = stmt.expr {
             let vreg = self.emit_expression(expr.as_ref())?;
-            self.text_output
-                .push_str(&format!("    write_char {}\n", vreg));
+            write!(self.text_output, "    write_char {}\n", vreg).unwrap();
             Ok(())
         } else {
             Err("WriteChar statement missing expression".to_string())
@@ -518,8 +450,7 @@ impl ASTVisitor for IRGenerator {
         if stmt.expr.is_empty() {
             return Err("WriteStr statement missing expression".to_string());
         }
-        self.text_output
-            .push_str(&format!("    write_str \"{}\"\n", stmt.expr));
+        write!(self.text_output, "    write_str \"{}\"\n", stmt.expr).unwrap();
         Ok(())
     }
 
@@ -527,12 +458,9 @@ impl ASTVisitor for IRGenerator {
         let symbol = self
             .get_variable_symbol(&expr.identifier, "variable in read")?
             .clone();
-
         let vreg = self.allocate_virtual_register();
-        self.text_output
-            .push_str(&format!("    read_int {}\n", vreg));
+        write!(self.text_output, "    read_int {}\n", vreg).unwrap();
         self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-        
         Ok(())
     }
 
@@ -540,26 +468,21 @@ impl ASTVisitor for IRGenerator {
         let symbol = self
             .get_variable_symbol(&expr.identifier, "variable in read")?
             .clone();
-
         let vreg = self.allocate_virtual_register();
-        self.text_output
-            .push_str(&format!("    read_char {}\n", vreg));
+        write!(self.text_output, "    read_char {}\n", vreg).unwrap();
         self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-        
         Ok(())
     }
 
     fn visit_exit(&mut self, _expr: &Exit) -> Result<(), String> {
         self.exit_emitted = true;
-        self.text_output.push_str("    exit 0\n");
+        write!(self.text_output, "    exit 0\n").unwrap();
         Ok(())
     }
 
     fn visit_const(&mut self, expr: &ConstDecl) -> Result<(), String> {
         for (id, num) in &expr.const_decl {
-            self.data_output
-                .push_str(&format!("const {} = {}\n", id, num));
-
+            write!(self.data_output, "const {} = {}\n", id, num).unwrap();
             self.update_symbol_location(id, SymbolLocation::GlobalLabel(id.clone()), true);
         }
         Ok(())
@@ -568,8 +491,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
             // Generate IR variable declaration
-            self.bss_output.push_str(&format!("var {}\n", var_name));
-            
+            write!(self.bss_output, "var {}\n", var_name).unwrap();
             // Update the symbol table
             self.update_symbol_location(
                 var_name,
@@ -583,15 +505,12 @@ impl ASTVisitor for IRGenerator {
     fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Result<(), String> {
         for (name, proc_block) in &expr.procedurs {
             self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
-
-            self.text_output.push_str(&format!("{}:\n", name));
-            self.text_output.push_str("    proc_enter\n");
-            
+            write!(self.text_output, "{}:\n", name).unwrap();
+            write!(self.text_output, "    proc_enter\n").unwrap();
             if let Some(block) = proc_block {
                 block.accept(self)?;
             }
-
-            self.text_output.push_str("    proc_exit\n");
+            write!(self.text_output, "    proc_exit\n").unwrap();
         }
         Ok(())
     }
@@ -609,7 +528,6 @@ impl ASTVisitor for IRGenerator {
         if let Some(stmt) = &block.statement {
             stmt.accept(self)?;
         }
-        
         Ok(())
     }
 
