@@ -1,5 +1,6 @@
 use std::{fs::File, io::Read, path::Path, process::exit};
 
+pub mod assembly_generator;
 pub mod ast;
 pub mod block;
 pub mod codegen;
@@ -14,7 +15,6 @@ pub mod symboltable;
 pub mod token;
 pub mod types;
 pub mod visiters;
-pub mod assembly_generator;
 
 pub const VERSION: &str = "0.1.1";
 

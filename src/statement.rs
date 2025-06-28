@@ -1,13 +1,13 @@
-use crate::ast::Node;
+use crate::ast::{Node, ExpressionNode};
 use crate::visiters::ASTVisitor;
 
 pub struct AssignStmt {
     pub identifier: String,
-    pub expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
 impl AssignStmt {
-    pub fn new(identifier: String, expr: Option<Box<dyn Node>>) -> Self {
+    pub fn new(identifier: String, expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { identifier, expr }
     }
 }
@@ -51,15 +51,16 @@ impl Node for BeginStmt {
         print!("end");
     }
 }
+
 pub struct IfStmt {
-    pub condition: Option<Box<dyn Node>>,
+    pub condition: Option<Box<dyn ExpressionNode>>,
     pub then_branch: Option<Box<dyn Node>>,
     pub else_branch: Option<Box<dyn Node>>,
 }
 
 impl IfStmt {
     pub fn new(
-        condition: Option<Box<dyn Node>>,
+        condition: Option<Box<dyn ExpressionNode>>,
         then_branch: Option<Box<dyn Node>>,
         else_branch: Option<Box<dyn Node>>,
     ) -> Self {
@@ -91,16 +92,18 @@ impl Node for IfStmt {
         }
     }
 }
+
 pub struct WhileStatement {
-    pub condition: Option<Box<dyn Node>>,
+    pub condition: Option<Box<dyn ExpressionNode>>,
     pub body: Option<Box<dyn Node>>,
 }
 
 impl WhileStatement {
-    pub fn new(condition: Option<Box<dyn Node>>, body: Option<Box<dyn Node>>) -> Self {
+    pub fn new(condition: Option<Box<dyn ExpressionNode>>, body: Option<Box<dyn Node>>) -> Self {
         Self { condition, body }
     }
 }
+
 impl Node for WhileStatement {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
         visitor.visit_while_statement(self)
@@ -126,6 +129,7 @@ impl CallStmt {
         Self { identifier }
     }
 }
+
 impl Node for CallStmt {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
         visitor.visit_call(self)

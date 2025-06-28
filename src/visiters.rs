@@ -22,14 +22,14 @@ use crate::types::Ident;
 use crate::types::Number;
 
 pub trait ASTVisitor {
-    fn visit_ident(&mut self, ident: &Ident) -> Result<(), String>;
-    fn visit_number(&mut self, number: &Number) -> Result<(), String>;
-    fn visit_variable(&mut self, variable: &Variable) -> Result<(), String>;
-    fn visit_binary_operation(&mut self, binary_operation: &BinOp) -> Result<(), String>;
+    fn visit_ident(&mut self, ident: &Ident) -> Result<String, String>;
+    fn visit_number(&mut self, number: &Number) -> Result<String, String>;
+    fn visit_variable(&mut self, variable: &Variable) -> Result<String, String>;
+    fn visit_binary_operation(&mut self, binary_operation: &BinOp) -> Result<String, String>;
     fn visit_while_statement(&mut self, while_statement: &WhileStatement) -> Result<(), String>;
-    fn visit_condition(&mut self, condition: &OddCondition) -> Result<(), String>;
+    fn visit_condition(&mut self, condition: &OddCondition) -> Result<String, String>;
     fn visit_relational_condition(&mut self, condition: &RelationalCondition)
-        -> Result<(), String>;
+        -> Result<String, String>;
     fn visit_call(&mut self, condition: &CallStmt) -> Result<(), String>;
     fn visit_assign(&mut self, expr: &AssignStmt) -> Result<(), String>;
     fn visit_begin(&mut self, expr: &BeginStmt) -> Result<(), String>;

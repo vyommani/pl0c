@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Exit, Node, Variable},
+    ast::{Exit, Node, Variable, ExpressionNode},
     block::Block,
     decl::{ConstDecl, ProcDecl, VarDecl},
     expression::{BinOp, OddCondition, RelationalCondition},
@@ -10,6 +10,8 @@ use crate::{
     types::{Ident, Number},
     visiters::ASTVisitor,
 };
+use std::collections::HashMap;
+
 pub struct IRGenerator {
     label_counter: i32,
     vreg_counter: i32,
@@ -19,6 +21,7 @@ pub struct IRGenerator {
     vreg_prefix: String,
     symbol_table: SymbolTable,
     exit_emitted: bool,
+    variable_registers: Vec<HashMap<String, String>>, // scoped variable_name -> virtual_register mapping
 }
 
 impl IRGenerator {
@@ -32,6 +35,7 @@ impl IRGenerator {
             text_output: String::with_capacity(4096),
             vreg_prefix: "v".to_string(),
             exit_emitted: false,
+            variable_registers: vec![HashMap::new()], // Start with global scope
         }
     }
 
@@ -48,24 +52,29 @@ impl IRGenerator {
     }
 
     pub fn get_output(&self) -> String {
-        let mut output = String::with_capacity(
-            self.data_output.len() + self.bss_output.len() + self.text_output.len() + 100,
-        );
+        let mut output = String::new();
+        
+        // Add constants as IR data declarations
         if !self.data_output.is_empty() {
-            output.push_str("section .data\n");
             output.push_str(&self.data_output);
+            output.push('\n');
         }
+        
+        // Add global variables as IR data declarations
         if !self.bss_output.is_empty() {
-            output.push_str("section .bss\n");
             output.push_str(&self.bss_output);
+            output.push('\n');
         }
-        output.push_str("global _start\nsection .text\n_start:\n");
+        
+        // Add the main IR code
         output.push_str(&self.text_output);
         output
     }
 
     pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Result<(), String> {
         self.exit_emitted = false;
+        // Reset to global scope for new program
+        self.variable_registers = vec![HashMap::new()];
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
             .accept(self)?;
         if !self.exit_emitted {
@@ -74,9 +83,8 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn emit_expression(&mut self, expr: &dyn crate::ast::Node) -> Result<String, String> {
-        expr.accept(self)?;
-        Ok(format!("v{}", self.vreg_counter - 1))
+    fn emit_expression(&mut self, expr: &dyn crate::ast::ExpressionNode) -> Result<String, String> {
+        ExpressionNode::accept(expr, self)
     }
 
     fn system_exit(&mut self, code: i32) {
@@ -186,22 +194,33 @@ impl IRGenerator {
     fn get_procedure_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
         self.get_symbol_with_type(name, SymbolType::Procedure, operation)
     }
+
+    // Helper function to get or load a variable efficiently
+    fn get_or_load_variable(&mut self, variable_name: &str) -> Result<String, String> {
+        // Always load from memory for correctness
+        let symbol = self.get_variable_symbol(variable_name, "variable")?.clone();
+        let vreg = self.allocate_virtual_register();
+        self.emit_load_from_symbol(&symbol, &vreg, variable_name)?;
+        Ok(vreg)
+    }
 }
 
 impl ASTVisitor for IRGenerator {
-    fn visit_ident(&mut self, ident: &Ident) -> Result<(), String> {
+    fn visit_ident(&mut self, ident: &Ident) -> Result<String, String> {
         let symbol = self
             .symbol_table
             .get(&ident.value)
             .ok_or_else(|| format!("Undefined identifier: {}", ident.value))?
             .clone();
-        let vreg = self.allocate_virtual_register();
         match symbol.symbol_type {
             SymbolType::Constant(value) => {
+                let vreg = self.allocate_virtual_register();
                 self.text_output
                     .push_str(&format!("    li {}, {}\n", vreg, value));
+                Ok(vreg)
             }
             SymbolType::Procedure => {
+                let vreg = self.allocate_virtual_register();
                 match &symbol.location {
                     SymbolLocation::GlobalLabel(label) => {
                         self.text_output
@@ -211,32 +230,43 @@ impl ASTVisitor for IRGenerator {
                         return Err(format!("Procedure {} has no valid address", ident.value));
                     }
                 }
+                Ok(vreg)
+            }
+            SymbolType::Variable => {
+                // Use optimized variable loading for variables
+                let vreg = self.get_or_load_variable(&ident.value)?;
+                // If the variable was already loaded, we need to ensure the register is properly tracked
+                // for the expression evaluation system
+                if !vreg.starts_with(&self.vreg_prefix) {
+                    // This shouldn't happen, but just in case
+                    return Err(format!("Invalid register format: {}", vreg));
+                }
+                Ok(vreg)
             }
             _ => {
-                // For variables and other types, use the helper function
+                // For other types, use the helper function
+                let vreg = self.allocate_virtual_register();
                 self.emit_load_from_symbol(&symbol, &vreg, &ident.value)?;
+                Ok(vreg)
             }
         }
-        Ok(())
     }
 
-    fn visit_number(&mut self, number: &Number) -> Result<(), String> {
+    fn visit_number(&mut self, number: &Number) -> Result<String, String> {
         let vreg = self.allocate_virtual_register();
         self.text_output
             .push_str(&format!("    li {}, {}\n", vreg, number.value));
-        Ok(())
+        Ok(vreg)
     }
 
-    fn visit_variable(&mut self, variable: &Variable) -> Result<(), String> {
-        let symbol = self
-            .get_variable_symbol(&variable.name, "variable")?
-            .clone();
-        let vreg = self.allocate_virtual_register();
-        self.emit_load_from_symbol(&symbol, &vreg, &variable.name)?;
-        Ok(())
+    fn visit_variable(&mut self, variable: &Variable) -> Result<String, String> {
+        // Use the optimized variable loading and ensure the register is properly tracked
+        let vreg = self.get_or_load_variable(&variable.name)?;
+        // The register is already allocated and tracked, so we don't need to do anything else
+        Ok(vreg)
     }
 
-    fn visit_binary_operation(&mut self, binop: &BinOp) -> Result<(), String> {
+    fn visit_binary_operation(&mut self, binop: &BinOp) -> Result<String, String> {
         let left_vreg = binop
             .left
             .as_ref()
@@ -278,7 +308,7 @@ impl ASTVisitor for IRGenerator {
             }
             _ => return Err(format!("Unknown operator: {}", binop.operator)),
         }
-        Ok(())
+        Ok(result_vreg)
     }
 
     fn visit_while_statement(&mut self, stmt: &WhileStatement) -> Result<(), String> {
@@ -304,7 +334,7 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_condition(&mut self, cond: &OddCondition) -> Result<(), String> {
+    fn visit_condition(&mut self, cond: &OddCondition) -> Result<String, String> {
         let expr = cond
             .expr
             .as_ref()
@@ -313,10 +343,10 @@ impl ASTVisitor for IRGenerator {
         let result_reg = self.allocate_virtual_register();
         self.text_output
             .push_str(&format!("    is_odd {}, {}\n", result_reg, num_reg));
-        Ok(())
+        Ok(result_reg)
     }
 
-    fn visit_relational_condition(&mut self, cond: &RelationalCondition) -> Result<(), String> {
+    fn visit_relational_condition(&mut self, cond: &RelationalCondition) -> Result<String, String> {
         let left = cond
             .left
             .as_ref()
@@ -376,7 +406,7 @@ impl ASTVisitor for IRGenerator {
             }
             _ => return Err(format!("Unknown relational operator: {}", cond.operator)),
         }
-        Ok(())
+        Ok(result_vreg)
     }
 
     fn visit_call(&mut self, call: &CallStmt) -> Result<(), String> {
@@ -411,7 +441,7 @@ impl ASTVisitor for IRGenerator {
             .ok_or_else(|| "Assign statement missing expression".to_string())?;
         let vreg = self.emit_expression(expr.as_ref())?;
         self.emit_store_to_symbol(&symbol, &vreg, &stmt.identifier)?;
-
+        
         Ok(())
     }
 
@@ -502,7 +532,7 @@ impl ASTVisitor for IRGenerator {
         self.text_output
             .push_str(&format!("    read_int {}\n", vreg));
         self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-
+        
         Ok(())
     }
 
@@ -515,20 +545,20 @@ impl ASTVisitor for IRGenerator {
         self.text_output
             .push_str(&format!("    read_char {}\n", vreg));
         self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-
+        
         Ok(())
     }
 
     fn visit_exit(&mut self, _expr: &Exit) -> Result<(), String> {
         self.exit_emitted = true;
-        self.text_output.push_str("    exit\n");
+        self.text_output.push_str("    exit 0\n");
         Ok(())
     }
 
     fn visit_const(&mut self, expr: &ConstDecl) -> Result<(), String> {
         for (id, num) in &expr.const_decl {
             self.data_output
-                .push_str(&format!("    {}: dq {}\n", id, num));
+                .push_str(&format!("const {} = {}\n", id, num));
 
             self.update_symbol_location(id, SymbolLocation::GlobalLabel(id.clone()), true);
         }
@@ -537,7 +567,10 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
-            // Only update the symbol table; do not emit mov instructions for initialization
+            // Generate IR variable declaration
+            self.bss_output.push_str(&format!("var {}\n", var_name));
+            
+            // Update the symbol table
             self.update_symbol_location(
                 var_name,
                 SymbolLocation::GlobalLabel(var_name.clone()),
@@ -553,7 +586,7 @@ impl ASTVisitor for IRGenerator {
 
             self.text_output.push_str(&format!("{}:\n", name));
             self.text_output.push_str("    proc_enter\n");
-
+            
             if let Some(block) = proc_block {
                 block.accept(self)?;
             }
@@ -576,6 +609,7 @@ impl ASTVisitor for IRGenerator {
         if let Some(stmt) = &block.statement {
             stmt.accept(self)?;
         }
+        
         Ok(())
     }
 

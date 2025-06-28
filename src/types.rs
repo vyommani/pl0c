@@ -1,4 +1,4 @@
-use crate::ast::Node;
+use crate::ast::{Node, ExpressionNode};
 use crate::visiters::ASTVisitor;
 
 pub struct Ident {
@@ -13,10 +13,18 @@ impl Ident {
 
 impl Node for Ident {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_ident(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_ident(self);
+        Ok(())
     }
     fn print(&self) {
         print!("{}", self.value);
+    }
+}
+
+impl ExpressionNode for Ident {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_ident(self)
     }
 }
 
@@ -29,11 +37,20 @@ impl Number {
         Self { value }
     }
 }
+
 impl Node for Number {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_number(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_number(self);
+        Ok(())
     }
     fn print(&self) {
         print!("{}", self.value);
+    }
+}
+
+impl ExpressionNode for Number {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_number(self)
     }
 }

@@ -1,16 +1,16 @@
-use crate::ast::Node;
+use crate::ast::{Node, ExpressionNode};
 use crate::visiters::ASTVisitor;
 
 pub struct BinOp {
-    pub left: Option<Box<dyn Node>>,
+    pub left: Option<Box<dyn ExpressionNode>>,
     pub operator: String,
-    pub right: Option<Box<dyn Node>>,
+    pub right: Option<Box<dyn ExpressionNode>>,
 }
 
 impl BinOp {
     pub fn new(
-        left: Option<Box<dyn Node>>,
-        right: Option<Box<dyn Node>>,
+        left: Option<Box<dyn ExpressionNode>>,
+        right: Option<Box<dyn ExpressionNode>>,
         operator: String,
     ) -> Self {
         Self {
@@ -23,7 +23,9 @@ impl BinOp {
 
 impl Node for BinOp {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_binary_operation(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_binary_operation(self);
+        Ok(())
     }
 
     fn print(&self) {
@@ -57,18 +59,27 @@ impl Node for BinOp {
     }
 }
 
+impl ExpressionNode for BinOp {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_binary_operation(self)
+    }
+}
+
 pub struct OddCondition {
-    pub expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
 impl OddCondition {
-    pub fn new(expr: Option<Box<dyn Node>>) -> Self {
+    pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { expr }
     }
 }
+
 impl Node for OddCondition {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_condition(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_condition(self);
+        Ok(())
     }
     fn print(&self) {
         print!("odd ");
@@ -78,16 +89,22 @@ impl Node for OddCondition {
     }
 }
 
+impl ExpressionNode for OddCondition {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_condition(self)
+    }
+}
+
 pub struct RelationalCondition {
     pub operator: String,
-    pub left: Option<Box<dyn Node>>,
-    pub right: Option<Box<dyn Node>>,
+    pub left: Option<Box<dyn ExpressionNode>>,
+    pub right: Option<Box<dyn ExpressionNode>>,
 }
 
 impl RelationalCondition {
     pub fn new(
-        left: Option<Box<dyn Node>>,
-        right: Option<Box<dyn Node>>,
+        left: Option<Box<dyn ExpressionNode>>,
+        right: Option<Box<dyn ExpressionNode>>,
         operator: String,
     ) -> Self {
         Self {
@@ -100,7 +117,9 @@ impl RelationalCondition {
 
 impl Node for RelationalCondition {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_relational_condition(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_relational_condition(self);
+        Ok(())
     }
     fn print(&self) {
         if let Some(left) = &self.left {
@@ -131,5 +150,11 @@ impl Node for RelationalCondition {
         if let Some(right) = &self.right {
             right.print();
         }
+    }
+}
+
+impl ExpressionNode for RelationalCondition {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_relational_condition(self)
     }
 }

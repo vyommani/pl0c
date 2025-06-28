@@ -30,6 +30,10 @@ pub trait Node {
     fn print(&self);
 }
 
+pub trait ExpressionNode: Node {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String>;
+}
+
 pub struct Variable {
     pub name: String,
 }
@@ -44,7 +48,9 @@ impl Variable {
 
 impl Node for Variable {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
-        visitor.visit_variable(self)
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_variable(self);
+        Ok(())
     }
 
     fn print(&self) {
@@ -52,12 +58,18 @@ impl Node for Variable {
     }
 }
 
+impl ExpressionNode for Variable {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+        visitor.visit_variable(self)
+    }
+}
+
 pub struct Exit {
-    pub expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
 impl Exit {
-    pub fn new(expr: Option<Box<dyn Node>>) -> Self {
+    pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { expr: expr }
     }
 }

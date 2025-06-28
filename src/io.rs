@@ -1,12 +1,12 @@
-use crate::ast::Node;
+use crate::ast::{Node, ExpressionNode};
 use crate::visiters::ASTVisitor;
 
 pub struct WriteInt {
-    pub expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
 impl WriteInt {
-    pub fn new(expr: Option<Box<dyn Node>>) -> Self {
+    pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { expr }
     }
 }
@@ -25,11 +25,11 @@ impl Node for WriteInt {
 }
 
 pub struct WriteChar {
-    pub expr: Option<Box<dyn Node>>,
+    pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
 impl WriteChar {
-    pub fn new(expr: Option<Box<dyn Node>>) -> Self {
+    pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { expr }
     }
 }
