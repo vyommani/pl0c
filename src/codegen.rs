@@ -190,6 +190,21 @@ impl IRGenerator {
         self.emit_load_from_symbol(&symbol, &vreg, variable_name)?;
         Ok(vreg)
     }
+
+     fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) {
+        write!(self.text_output, "    {} {}, {}, {}\n", op, dest, left, right).unwrap();
+    }
+
+    fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) {
+        write!(self.text_output, "    {} {}, {}, {}\n", op, dest, left, right).unwrap();
+    }
+     fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) {
+        write!(self.text_output, "    beqz {}, {}\n", vreg, label).unwrap();
+    }
+    fn emit_jump(&mut self, label: &str) {
+        write!(self.text_output, "    jump {}\n", label).unwrap();
+    }
+
 }
 
 impl ASTVisitor for IRGenerator {
@@ -265,21 +280,14 @@ impl ASTVisitor for IRGenerator {
         let right_result = self.emit_expression(right_vreg.as_ref())?;
 
         let result_vreg = self.allocate_virtual_register();
-        match binop.operator.as_str() {
-            "Plus" => {
-                write!(self.text_output, "    add {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "Minus" => {
-                write!(self.text_output, "    sub {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "Multiply" => {
-                write!(self.text_output, "    mul {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "Divide" => {
-                write!(self.text_output, "    div {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
+        let op = match binop.operator.as_str() {
+            "Plus" => "add",
+            "Minus" => "sub",
+            "Multiply" => "mul",
+            "Divide" => "div",
             _ => return Err(format!("Unknown operator: {}", binop.operator)),
-        }
+        };
+        self.emit_binary_op(op, &result_vreg, &left_result, &right_result);
         Ok(result_vreg)
     }
 
@@ -292,12 +300,14 @@ impl ASTVisitor for IRGenerator {
             .as_ref()
             .ok_or_else(|| "While statement missing condition".to_string())?;
         let cond_vreg = self.emit_expression(condition.as_ref())?;
-        write!(self.text_output, "    beqz {}, {}\n", cond_vreg, end_label).unwrap();
+         // Branch to end if condition is false
+        self.emit_branch_if_zero(&cond_vreg, &end_label);
         stmt.body
             .as_ref()
             .ok_or_else(|| "While statement missing body".to_string())?
             .accept(self)?;
-        write!(self.text_output, "    jump {}\n", start_label).unwrap();
+        // Jump back to start
+        self.emit_jump(&start_label);
         write!(self.text_output, "{}:\n", end_label).unwrap();
         Ok(())
     }
@@ -327,30 +337,16 @@ impl ASTVisitor for IRGenerator {
         let right_result = self.emit_expression(right.as_ref())?;
 
         let result_vreg = self.allocate_virtual_register();
-        match cond.operator.as_str() {
-            "GreaterThan" => {
-                write!(self.text_output, "    cmp_gt {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "LessThan" => {
-                write!(self.text_output, "    cmp_lt {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "Equal" => {
-                write!(self.text_output, "    cmp_eq {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "GreaterThanEqual" => {
-                write!(self.text_output, "    cmp_ge {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "LessThanEqual" => {
-                write!(self.text_output, "    cmp_le {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "!=" => {
-                write!(self.text_output, "    cmp_ne {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
-            "Hash" => {
-                write!(self.text_output, "    cmp_ne {}, {}, {}\n", result_vreg, left_result, right_result).unwrap();
-            }
+        let op = match cond.operator.as_str() {
+            "GreaterThan" => "cmp_gt",
+            "LessThan" => "cmp_lt",
+            "Equal" => "cmp_eq",
+            "GreaterThanEqual" => "cmp_ge",
+            "LessThanEqual" => "cmp_le",
+            "!=" | "Hash" => "cmp_ne",
             _ => return Err(format!("Unknown relational operator: {}", cond.operator)),
-        }
+        };
+        self.emit_relational_op(op, &result_vreg, &left_result, &right_result);
         Ok(result_vreg)
     }
 
