@@ -10,7 +10,6 @@ use crate::{
     types::{Ident, Number},
     visiters::ASTVisitor,
 };
-use std::collections::HashMap;
 use std::fmt::Write;
 
 pub struct IRGenerator {
@@ -205,6 +204,112 @@ impl IRGenerator {
         write!(self.text_output, "    jump {}\n", label).unwrap();
     }
 
+    // Helper: emit a label
+    fn emit_label(&mut self, label: &str) {
+        write!(self.text_output, "{}:\n", label).unwrap();
+    }
+
+    // Helper: create and emit a label, returning its name
+    fn create_and_emit_label(&mut self) -> String {
+        let label = self.create_label();
+        self.emit_label(&label);
+        label
+    }
+
+    // Helper: evaluate a condition expression
+    fn evaluate_condition(&mut self, condition: &dyn crate::ast::ExpressionNode) -> Result<String, String> {
+        self.emit_expression(condition)
+    }
+
+    // Helper: conditional branch
+    fn emit_conditional_branch(&mut self, vreg: &str, label: &str) {
+        self.emit_branch_if_zero(vreg, label);
+    }
+
+    // Helper: write operation
+    fn emit_write_operation<F>(
+        &mut self,
+        expr_opt: Option<&dyn crate::ast::ExpressionNode>,
+        error_msg: &str,
+        write_fn: F,
+    ) -> Result<(), String>
+    where
+        F: FnOnce(&mut Self, &str),
+    {
+        if let Some(expr) = expr_opt {
+            let vreg = self.emit_expression(expr)?;
+            write_fn(self, &vreg);
+            Ok(())
+        } else {
+            Err(error_msg.to_string())
+        }
+    }
+
+    // Helper: read operation
+    fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Result<(), String> {
+        let symbol = self.get_variable_symbol(identifier, "variable in read")?.clone();
+        let vreg = self.allocate_virtual_register();
+        write!(self.text_output, "    {} {}\n", operation, vreg).unwrap();
+        self.emit_store_to_symbol(&symbol, &vreg, identifier)?;
+        Ok(())
+    }
+
+    // Helper: procedure call
+    fn emit_procedure_call(&mut self, identifier: &str) -> Result<(), String> {
+        let symbol = self.get_procedure_symbol(identifier, "procedure")?;
+        let label = match &symbol.location {
+            SymbolLocation::GlobalLabel(label) => label.clone(),
+            SymbolLocation::None => identifier.to_string(),
+            _ => return Err(format!("Procedure {} has no valid address", identifier)),
+        };
+        write!(self.text_output, "    call {}\n", label).unwrap();
+        Ok(())
+    }
+
+    // Helper: binary operation
+    fn emit_binary_operation(
+        &mut self,
+        left_expr: &dyn crate::ast::ExpressionNode,
+        right_expr: &dyn crate::ast::ExpressionNode,
+        operator: &str,
+    ) -> Result<String, String> {
+        let left_result = self.emit_expression(left_expr)?;
+        let right_result = self.emit_expression(right_expr)?;
+        let result_vreg = self.allocate_virtual_register();
+        let op = match operator {
+            "Plus" => "add",
+            "Minus" => "sub",
+            "Multiply" => "mul",
+            "Divide" => "div",
+            _ => return Err(format!("Unknown operator: {}", operator)),
+        };
+        self.emit_binary_op(op, &result_vreg, &left_result, &right_result);
+        Ok(result_vreg)
+    }
+
+    // Helper: relational operation
+    fn emit_relational_operation(
+        &mut self,
+        left_expr: &dyn crate::ast::ExpressionNode,
+        right_expr: &dyn crate::ast::ExpressionNode,
+        operator: &str,
+    ) -> Result<String, String> {
+        let left_result = self.emit_expression(left_expr)?;
+        let right_result = self.emit_expression(right_expr)?;
+        let result_vreg = self.allocate_virtual_register();
+        let op = match operator {
+            "GreaterThan" => "cmp_gt",
+            "LessThan" => "cmp_lt",
+            "Equal" => "cmp_eq",
+            "GreaterThanEqual" => "cmp_ge",
+            "LessThanEqual" => "cmp_le",
+            "!=" | "Hash" => "cmp_ne",
+            _ => return Err(format!("Unknown relational operator: {}", operator)),
+        };
+        self.emit_relational_op(op, &result_vreg, &left_result, &right_result);
+        Ok(result_vreg)
+    }
+
 }
 
 impl ASTVisitor for IRGenerator {
@@ -274,41 +379,25 @@ impl ASTVisitor for IRGenerator {
             .right
             .as_ref()
             .ok_or_else(|| "Binary operation missing right operand".to_string())?;
-
-        // Generate expressions first and store results
-        let left_result = self.emit_expression(left_vreg.as_ref())?;
-        let right_result = self.emit_expression(right_vreg.as_ref())?;
-
-        let result_vreg = self.allocate_virtual_register();
-        let op = match binop.operator.as_str() {
-            "Plus" => "add",
-            "Minus" => "sub",
-            "Multiply" => "mul",
-            "Divide" => "div",
-            _ => return Err(format!("Unknown operator: {}", binop.operator)),
-        };
-        self.emit_binary_op(op, &result_vreg, &left_result, &right_result);
-        Ok(result_vreg)
+        self.emit_binary_operation(left_vreg.as_ref(), right_vreg.as_ref(), &binop.operator)
     }
 
     fn visit_while_statement(&mut self, stmt: &WhileStatement) -> Result<(), String> {
-        let start_label = self.create_label();
+        let start_label = self.create_and_emit_label();
         let end_label = self.create_label();
-        write!(self.text_output, "{}:\n", start_label).unwrap();
         let condition = stmt
             .condition
             .as_ref()
             .ok_or_else(|| "While statement missing condition".to_string())?;
-        let cond_vreg = self.emit_expression(condition.as_ref())?;
-         // Branch to end if condition is false
-        self.emit_branch_if_zero(&cond_vreg, &end_label);
-        stmt.body
+        let cond_vreg = self.evaluate_condition(condition.as_ref())?;
+        self.emit_conditional_branch(&cond_vreg, &end_label);
+        let body = stmt
+            .body
             .as_ref()
-            .ok_or_else(|| "While statement missing body".to_string())?
-            .accept(self)?;
-        // Jump back to start
+            .ok_or_else(|| "While statement missing body".to_string())?;
+        body.accept(self)?;
         self.emit_jump(&start_label);
-        write!(self.text_output, "{}:\n", end_label).unwrap();
+        self.emit_label(&end_label);
         Ok(())
     }
 
@@ -332,38 +421,11 @@ impl ASTVisitor for IRGenerator {
             .right
             .as_ref()
             .ok_or_else(|| "Relational condition missing right operand".to_string())?;
-        // Generate expressions first and store results
-        let left_result = self.emit_expression(left.as_ref())?;
-        let right_result = self.emit_expression(right.as_ref())?;
-
-        let result_vreg = self.allocate_virtual_register();
-        let op = match cond.operator.as_str() {
-            "GreaterThan" => "cmp_gt",
-            "LessThan" => "cmp_lt",
-            "Equal" => "cmp_eq",
-            "GreaterThanEqual" => "cmp_ge",
-            "LessThanEqual" => "cmp_le",
-            "!=" | "Hash" => "cmp_ne",
-            _ => return Err(format!("Unknown relational operator: {}", cond.operator)),
-        };
-        self.emit_relational_op(op, &result_vreg, &left_result, &right_result);
-        Ok(result_vreg)
+        self.emit_relational_operation(left.as_ref(), right.as_ref(), &cond.operator)
     }
 
     fn visit_call(&mut self, call: &CallStmt) -> Result<(), String> {
-        let symbol = self.get_procedure_symbol(&call.identifier, "procedure")?;
-        // Extract label or None before mutably borrowing self
-        let label_opt = match &symbol.location {
-            SymbolLocation::GlobalLabel(label) => Some(label.clone()),
-            SymbolLocation::None => None,
-            _ => return Err(format!("Procedure {} has no valid address", call.identifier)),
-        };
-        if let Some(label) = label_opt {
-            write!(self.text_output, "    call {}\n", label).unwrap();
-        } else {
-            write!(self.text_output, "    call {}\n", call.identifier).unwrap();
-        }
-        Ok(())
+        self.emit_procedure_call(&call.identifier)
     }
 
     fn visit_assign(&mut self, stmt: &AssignStmt) -> Result<(), String> {
@@ -396,50 +458,44 @@ impl ASTVisitor for IRGenerator {
             .condition
             .as_ref()
             .ok_or_else(|| "If statement missing condition".to_string())?;
-        let cond_vreg = self.emit_expression(condition.as_ref())?;
-
-        // Emit pure IR instructions for conditional branching
-        write!(self.text_output, "    beqz {}, {}\n", cond_vreg, else_label).unwrap();
-
+        let cond_vreg = self.evaluate_condition(condition.as_ref())?;
+        self.emit_conditional_branch(&cond_vreg, &else_label);
         let then_branch = expr
             .then_branch
             .as_ref()
             .ok_or_else(|| "If statement missing then branch".to_string())?;
         then_branch.accept(self)?;
-
         if let Some(ref else_branch) = expr.else_branch {
-            // Jump over else branch
-            write!(self.text_output, "    jump {}\n", end_label).unwrap();
-            write!(self.text_output, "{}:\n", else_label).unwrap();
+            self.emit_jump(&end_label);
+            self.emit_label(&else_label);
             else_branch.accept(self)?;
-            write!(self.text_output, "{}:\n", end_label).unwrap();
+            self.emit_label(&end_label);
         } else {
-            // No else branch: jump to end after then branch
-            write!(self.text_output, "    jump {}\n", end_label).unwrap();
-            write!(self.text_output, "{}:\n", else_label).unwrap();
-            write!(self.text_output, "{}:\n", end_label).unwrap();
+            self.emit_jump(&end_label);
+            self.emit_label(&else_label);
+            self.emit_label(&end_label);
         }
         Ok(())
     }
 
     fn visit_write_int(&mut self, stmt: &WriteInt) -> Result<(), String> {
-        if let Some(ref expr) = stmt.expr {
-            let vreg = self.emit_expression(expr.as_ref())?;
-            write!(self.text_output, "    write_int {}\n", vreg).unwrap();
-            Ok(())
-        } else {
-            Err("WriteInt statement missing expression".to_string())
-        }
+        self.emit_write_operation(
+            stmt.expr.as_ref().map(|e| e.as_ref()),
+            "WriteInt statement missing expression",
+            |generator, vreg| {
+                write!(generator.text_output, "    write_int {}\n", vreg).unwrap();
+            },
+        )
     }
 
     fn visit_write_char(&mut self, stmt: &WriteChar) -> Result<(), String> {
-        if let Some(ref expr) = stmt.expr {
-            let vreg = self.emit_expression(expr.as_ref())?;
-            write!(self.text_output, "    write_char {}\n", vreg).unwrap();
-            Ok(())
-        } else {
-            Err("WriteChar statement missing expression".to_string())
-        }
+        self.emit_write_operation(
+            stmt.expr.as_ref().map(|e| e.as_ref()),
+            "WriteChar statement missing expression",
+            |generator, vreg| {
+                write!(generator.text_output, "    write_char {}\n", vreg).unwrap();
+            },
+        )
     }
 
     fn visit_write_str(&mut self, stmt: &WriteStr) -> Result<(), String> {
@@ -451,23 +507,11 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_read_int(&mut self, expr: &ReadInt) -> Result<(), String> {
-        let symbol = self
-            .get_variable_symbol(&expr.identifier, "variable in read")?
-            .clone();
-        let vreg = self.allocate_virtual_register();
-        write!(self.text_output, "    read_int {}\n", vreg).unwrap();
-        self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-        Ok(())
+        self.emit_read_operation("read_int", &expr.identifier)
     }
 
     fn visit_read_char(&mut self, expr: &ReadChar) -> Result<(), String> {
-        let symbol = self
-            .get_variable_symbol(&expr.identifier, "variable in read")?
-            .clone();
-        let vreg = self.allocate_virtual_register();
-        write!(self.text_output, "    read_char {}\n", vreg).unwrap();
-        self.emit_store_to_symbol(&symbol, &vreg, &expr.identifier)?;
-        Ok(())
+        self.emit_read_operation("read_char", &expr.identifier)
     }
 
     fn visit_exit(&mut self, _expr: &Exit) -> Result<(), String> {
