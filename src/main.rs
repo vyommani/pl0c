@@ -1,9 +1,9 @@
 use clap::Parser;
 use pl0c::{
-    self, codegen::IRGenerator, lexer::scan, parser::parse, read, symboltable::SymbolTable, 
-    assembly_generator::AssemblyGenerator, VERSION,
+    self, assembly_generator::AssemblyGenerator, codegen::IRGenerator, lexer::scan, parser::parse,
+    read, symboltable::SymbolTable, VERSION,
 };
-use std::{process::exit, path::PathBuf};
+use std::{path::PathBuf, process::exit};
 
 #[derive(Parser)]
 #[command(
@@ -59,8 +59,7 @@ impl std::fmt::Display for CompilerError {
 
 fn compile(input_path: &PathBuf, print_ir: bool, print_asm: bool) -> Result<String, CompilerError> {
     // Read input file
-    let bytes = read(input_path)
-        .map_err(|e| CompilerError::FileReadError(e.to_string()))?;
+    let bytes = read(input_path).map_err(|e| CompilerError::FileReadError(e.to_string()))?;
 
     // Lexical analysis
     let mut state = pl0c::LineNumber::default();
@@ -74,29 +73,17 @@ fn compile(input_path: &PathBuf, print_ir: bool, print_asm: bool) -> Result<Stri
 
     if let Some(ref ast) = ast {
         ast.print();
-    } 
-    // Code generation
+    }
+    // Intermediate Code generation
     let mut codegen = IRGenerator::new(symbol_table);
     codegen.generate_code(ast)
         .map_err(|e| CompilerError::CodeGenError(e.to_string()))?;
     let ir_output = codegen.get_output();
     if print_ir {
-        println!("\nIntermediate Representation:");
+        println!("\nIR:");
         println!("{}", ir_output);
     }
-    // Register allocation
-    let mut assembly_gen = AssemblyGenerator::new();
-    assembly_gen.generate_assembly(&ir_output)
-        .map_err(|e| CompilerError::RegisterAllocError(e.to_string()))?;
-    let asm_output = assembly_gen.get_output();
-
-    // Print intermediate results if requested
-    if print_asm {
-        println!("\nGenerated Assembly:");
-        println!("{}", asm_output);
-    }
-
-    Ok(asm_output)
+    Ok(ir_output)
 }
 
 fn main() {
