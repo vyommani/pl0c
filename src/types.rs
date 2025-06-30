@@ -20,6 +20,9 @@ impl Node for Ident {
     fn print(&self) {
         print!("{}", self.value);
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl ExpressionNode for Ident {
@@ -46,6 +49,9 @@ impl Node for Number {
     }
     fn print(&self) {
         print!("{}", self.value);
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

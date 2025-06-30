@@ -57,6 +57,9 @@ impl Node for BinOp {
             right.print();
         }
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl ExpressionNode for BinOp {
@@ -86,6 +89,9 @@ impl Node for OddCondition {
         if let Some(expr) = &self.expr {
             expr.print();
         }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -150,6 +156,9 @@ impl Node for RelationalCondition {
         if let Some(right) = &self.right {
             right.print();
         }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

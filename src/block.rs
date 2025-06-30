@@ -40,4 +40,8 @@ impl Node for Block {
             stmt.print();
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

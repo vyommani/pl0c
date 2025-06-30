@@ -1,6 +1,11 @@
 use std::{fs::File, io::Read, path::Path, process::exit};
 
 pub mod assembly_generator;
+pub mod register_allocator_x86_64;
+pub mod register_allocator_arm64;
+pub mod register_allocator_common;
+pub mod assembly_emitter_x86_64;
+pub mod assembly_emitter_arm64;
 pub mod ast;
 pub mod block;
 pub mod codegen;

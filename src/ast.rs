@@ -24,10 +24,12 @@
 */
 
 use crate::visiters::ASTVisitor;
+use std::any::Any;
 
 pub trait Node {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String>;
     fn print(&self);
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub trait ExpressionNode: Node {
@@ -56,6 +58,10 @@ impl Node for Variable {
     fn print(&self) {
         print!("{}", &self.name);
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 impl ExpressionNode for Variable {
@@ -83,5 +89,9 @@ impl Node for Exit {
         if let Some(expr) = &self.expr {
             expr.print();
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

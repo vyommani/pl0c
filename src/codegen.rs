@@ -546,7 +546,16 @@ impl ASTVisitor for IRGenerator {
         for (name, proc_block) in &expr.procedurs {
             self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
             write!(self.text_output, "{}:\n", name).unwrap();
-            write!(self.text_output, "    proc_enter\n").unwrap();
+            // Calculate stack size for this procedure
+            let mut stack_slots = 0;
+            if let Some(block) = proc_block {
+                // Downcast to Block to access var_decl
+                if let Some(block) = block.as_any().downcast_ref::<crate::block::Block>() {
+                    stack_slots = block.var_decl.var_decl.len();
+                }
+            }
+            let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
+            write!(self.text_output, "    proc_enter {}\n", stack_size).unwrap();
             if let Some(block) = proc_block {
                 block.accept(self)?;
             }

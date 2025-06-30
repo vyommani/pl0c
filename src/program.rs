@@ -23,4 +23,8 @@ impl Node for Program {
         }
         println!("{}", self.dot);
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

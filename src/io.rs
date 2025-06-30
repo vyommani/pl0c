@@ -22,6 +22,9 @@ impl Node for WriteInt {
         }
         print!(")");
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct WriteChar {
@@ -45,6 +48,9 @@ impl Node for WriteChar {
         }
         print!(")");
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct WriteStr {
@@ -64,6 +70,9 @@ impl Node for WriteStr {
     fn print(&self) {
         print!("writeStr({})", self.expr);
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct ReadInt {
@@ -81,7 +90,10 @@ impl Node for ReadInt {
         visitor.visit_read_int(self)
     }
     fn print(&self) {
-        print!("readInt({})", self.identifier)
+        print!("readInt({})", self.identifier);
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -101,5 +113,8 @@ impl Node for ReadChar {
     }
     fn print(&self) {
         print!("readChar({})", self.identifier);
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

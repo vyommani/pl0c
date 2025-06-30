@@ -24,6 +24,9 @@ impl Node for AssignStmt {
             expr.print();
         }
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct BeginStmt {
@@ -49,6 +52,9 @@ impl Node for BeginStmt {
             }
         }
         print!("end");
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -91,6 +97,9 @@ impl Node for IfStmt {
             else_branch.print();
         }
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct WhileStatement {
@@ -118,6 +127,9 @@ impl Node for WhileStatement {
             body.print();
         }
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct CallStmt {
@@ -136,5 +148,8 @@ impl Node for CallStmt {
     }
     fn print(&self) {
         print!("call {}", &self.identifier);
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

@@ -37,6 +37,9 @@ impl Node for ProcDecl {
             println!(";");
         }
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct VarDecl {
@@ -72,6 +75,9 @@ impl Node for VarDecl {
         if !first {
             println!(";");
         }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -110,5 +116,8 @@ impl Node for ConstDecl {
         if !first {
             println!(";");
         }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
