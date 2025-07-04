@@ -25,6 +25,18 @@ impl fmt::Display for RegisterName {
 }
 
 impl RegisterName {
+    pub fn from_usize(i: usize) -> Option<Self> {
+        match i {
+            0 => Some(RegisterName::RAX), 1 => Some(RegisterName::RBX), 2 => Some(RegisterName::RCX),
+            3 => Some(RegisterName::RDX), 4 => Some(RegisterName::RSI), 5 => Some(RegisterName::RDI),
+            6 => Some(RegisterName::RBP), 7 => Some(RegisterName::RSP), 8 => Some(RegisterName::R8),
+            9 => Some(RegisterName::R9), 10 => Some(RegisterName::R10), 11 => Some(RegisterName::R11),
+            12 => Some(RegisterName::R12), 13 => Some(RegisterName::R13), 14 => Some(RegisterName::R14),
+            15 => Some(RegisterName::R15),
+            _ => None,
+        }
+    }
+
     pub fn is_special_purpose(&self) -> bool {
         matches!(self, 
             RegisterName::RSP | RegisterName::RBP | 
@@ -202,4 +214,13 @@ impl RegisterAllocator for X86_64RegisterAllocator {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
         }
     }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any> {
+        self.vreg_map.get(vreg).map(|reg| reg as &dyn std::any::Any)
+    }
+    
 }

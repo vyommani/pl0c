@@ -21,6 +21,8 @@ pub struct IRGenerator {
     vreg_prefix: String,
     symbol_table: SymbolTable,
     exit_emitted: bool,
+    main_emitted: bool,
+    in_procedure: bool,
 }
 
 impl IRGenerator {
@@ -34,6 +36,8 @@ impl IRGenerator {
             text_output: String::with_capacity(4096),
             vreg_prefix: "v".to_string(),
             exit_emitted: false,
+            main_emitted: false,
+            in_procedure: false,
         }
     }
 
@@ -557,7 +561,9 @@ impl ASTVisitor for IRGenerator {
             let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
             write!(self.text_output, "    proc_enter {}\n", stack_size).unwrap();
             if let Some(block) = proc_block {
+                self.in_procedure = true;
                 block.accept(self)?;
+                self.in_procedure = false;
             }
             write!(self.text_output, "    proc_exit\n").unwrap();
         }
@@ -575,6 +581,10 @@ impl ASTVisitor for IRGenerator {
             block.proc_decl.accept(self)?;
         }
         if let Some(stmt) = &block.statement {
+            if !self.in_procedure && !self.main_emitted {
+                write!(self.text_output, "main:\n").unwrap();
+                self.main_emitted = true;
+            }
             stmt.accept(self)?;
         }
         Ok(())

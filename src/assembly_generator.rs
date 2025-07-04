@@ -1,9 +1,10 @@
 use crate::register_allocator_x86_64::X86_64RegisterAllocator;
 use crate::register_allocator_arm64::Arm64RegisterAllocator;
-use crate::register_allocator_common::RegisterError;
+use crate::register_allocator_common::{Register, RegisterError};
 use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
 use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
 use std::io;
+use std::any::Any;
 
 pub enum TargetArch {
     X86_64,
@@ -14,10 +15,13 @@ pub trait RegisterAllocator {
     fn free(&mut self, p_reg: usize);
     fn alloc(&mut self, v_reg: &str) -> Result<usize, RegisterError>;
     fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError>;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any>;
 }
 
 pub trait AssemblyEmitter {
     fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut dyn io::Write) -> Result<(), io::Error>;
+    fn analyze_register_usage(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Result<(), RegisterError>;
 }
 
 #[derive()]
@@ -64,6 +68,10 @@ impl AssemblyGenerator {
     }
 
     pub fn emit_assembly(&mut self, ir: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.emitter.analyze_register_usage(
+            &ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(),
+            &mut *self.allocator,
+        )?;
         self.emitter.emit(
             &ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(),
             &mut *self.allocator,

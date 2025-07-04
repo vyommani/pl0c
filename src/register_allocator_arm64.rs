@@ -52,7 +52,7 @@ const NUM_REGS: usize = 31; // for ARM64 (X0-X30)
 pub struct Arm64RegisterAllocator {
     free_list: Vec<usize>,
     reg_map: [Option<Register<RegisterName>>; NUM_REGS],
-    vreg_map: HashMap<String, Register<RegisterName>>,
+    pub vreg_map: HashMap<String, Register<RegisterName>>,
 }
 
 impl Arm64RegisterAllocator {
@@ -67,11 +67,17 @@ impl Arm64RegisterAllocator {
             RegisterName::X16, RegisterName::X17, RegisterName::X18, RegisterName::X19, RegisterName::X20, RegisterName::X21, RegisterName::X22, RegisterName::X23,
             RegisterName::X24, RegisterName::X25, RegisterName::X26, RegisterName::X27, RegisterName::X28, RegisterName::X29, RegisterName::X30,
         ];
-        for i in 0..NUM_REGS {
-            if names[i].get_constraints().can_allocate {
-                free_list.push(i);
-            }
+        // Only allocate from x9-x15 (caller-saved) and x19-x28 (callee-saved)
+        let allocatable_indices = [9,10,11,13,14,15,19,20,21,22,23,24,25,26,27,28];
+        for &i in allocatable_indices.iter().rev() {
+            free_list.push(i);
             reg_map[i] = Some(Register::new(i, usize::MAX, names[i].clone(), vec![], 0));
+        }
+        // Still initialize the rest of reg_map for completeness
+        for i in 0..NUM_REGS {
+            if reg_map[i].is_none() {
+                reg_map[i] = Some(Register::new(i, usize::MAX, names[i].clone(), vec![], 0));
+            }
         }
         Self {
             free_list,
@@ -124,6 +130,7 @@ impl Arm64RegisterAllocator {
 }
 
 impl RegisterAllocator for Arm64RegisterAllocator {
+    
     fn free(&mut self, p_reg: usize) {
         self.free(p_reg);
     }
@@ -153,5 +160,13 @@ impl RegisterAllocator for Arm64RegisterAllocator {
         } else {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
         }
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any> {
+        self.vreg_map.get(vreg).map(|reg| reg as &dyn std::any::Any)
     }
 }

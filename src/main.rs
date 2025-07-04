@@ -3,7 +3,7 @@ use pl0c::{
     self, assembly_generator::AssemblyGenerator, codegen::IRGenerator,
     lexer::scan, parser::parse, read, symboltable::SymbolTable, assembly_generator::TargetArch,
 };
-use std::{path::PathBuf, process::exit, time::Instant};
+use std::{path::PathBuf, process::exit, time::Instant, process::Command};
 
 #[derive(Parser)]
 #[command(
@@ -89,6 +89,27 @@ struct CompilationStats {
     ast_size: usize,
     ir_instructions: usize,
     assembly_instructions: usize,
+}
+
+fn fatal(msg: &str) -> ! {
+    eprintln!("{}", msg);
+    std::process::exit(1);
+}
+
+fn detect_arch(target: &Option<String>) -> &'static str {
+    match target.as_deref() {
+        Some("x86_64") => "x86_64",
+        Some("arm64") => "arm64",
+        _ => {
+            if cfg!(target_arch = "x86_64") {
+                "x86_64"
+            } else if cfg!(target_arch = "aarch64") {
+                "arm64"
+            } else {
+                fatal("Unsupported architecture for build.sh");
+            }
+        }
+    }
 }
 
 fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats), CompilerError> {
@@ -220,31 +241,44 @@ fn print_stats(stats: &CompilationStats) {
 fn main() {
     let args = Cli::parse();
 
-    // Compile the code
     match compile(&args.path, &args) {
         Ok((output, stats)) => {
-            // Determine output path
-            let output_path = args.output.unwrap_or_else(|| {
-                let mut path = args.path.clone();
-                path.set_extension("s");
-                path
-            });
+            let output_path = match &args.output {
+                Some(p) => p.clone(),
+                None => {
+                    let basename = args.path.file_stem().unwrap_or_default();
+                    let mut path = std::path::PathBuf::from(basename);
+                    path.set_extension("s");
+                    path
+                }
+            };
 
             // Write output to file
             if let Err(e) = std::fs::write(&output_path, &output) {
-                eprintln!("Error writing output file: {}", e);
-                exit(1);
+                fatal(&format!("Error writing output file: {}", e));
             }
 
-            println!("Successfully compiled to: {}", output_path.display());
-            
+            let arch = detect_arch(&args.target);
+            let asm_file = output_path.to_string_lossy();
+            let exe_file = output_path.with_extension("");
+            let exe_file_str = exe_file.to_string_lossy();
+            let status = Command::new("src/build.sh")
+                .arg(arch)
+                .arg(&*asm_file)
+                .arg(&*exe_file_str)
+                .status();
+            match status {
+                Ok(s) if s.success() => {
+                    // Do not print anything by default
+                }
+                Ok(s) => fatal(&format!("build.sh failed with exit code: {}", s)),
+                Err(e) => fatal(&format!("Failed to invoke build.sh: {}", e)),
+            }
+
             if args.timing {
                 print_stats(&stats);
             }
         }
-        Err(e) => {
-            eprintln!("Compilation failed: {}", e);
-            exit(1);
-        }
+        Err(e) => fatal(&format!("Compilation failed: {}", e)),
     }
 }

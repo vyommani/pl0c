@@ -30,6 +30,8 @@ impl fmt::Display for RegisterError {
     }
 }
 
+impl std::error::Error for RegisterError {}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Register<RN> {
     pub p_reg: usize,
