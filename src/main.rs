@@ -1,9 +1,9 @@
 use clap::Parser;
 use pl0c::{
-    self, assembly_generator::AssemblyGenerator, codegen::IRGenerator,
-    lexer::scan, parser::parse, read, symboltable::SymbolTable, assembly_generator::TargetArch,
+    self, assembly_generator::AssemblyGenerator, assembly_generator::TargetArch,
+    codegen::IRGenerator, lexer::scan, parser::parse, read, symboltable::SymbolTable,
 };
-use std::{path::PathBuf, process::exit, time::Instant, process::Command};
+use std::{path::PathBuf, process::exit, process::Command, time::Instant};
 
 #[derive(Parser)]
 #[command(
@@ -74,7 +74,9 @@ impl std::fmt::Display for CompilerError {
             CompilerError::LexerError(msg) => write!(f, "Lexer error: {}", msg),
             CompilerError::ParserError(msg) => write!(f, "Parser error: {}", msg),
             CompilerError::CodeGenError(msg) => write!(f, "Code generation error: {}", msg),
-            CompilerError::RegisterAllocError(msg) => write!(f, "Register allocation error: {}", msg),
+            CompilerError::RegisterAllocError(msg) => {
+                write!(f, "Register allocation error: {}", msg)
+            }
         }
     }
 }
@@ -114,7 +116,7 @@ fn detect_arch(target: &Option<String>) -> &'static str {
 
 fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats), CompilerError> {
     let start_time = Instant::now();
-    
+
     if args.verbose {
         println!("Starting compilation of: {}", input_path.display());
     }
@@ -123,7 +125,12 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     let target_arch = match args.target.as_deref() {
         Some("x86_64") => TargetArch::X86_64,
         Some("arm64") => TargetArch::ARM64,
-        Some(other) => return Err(CompilerError::ParserError(format!("Unsupported target: {}", other))),
+        Some(other) => {
+            return Err(CompilerError::ParserError(format!(
+                "Unsupported target: {}",
+                other
+            )))
+        }
         None => {
             // Auto-detect host architecture
             if cfg!(target_arch = "x86_64") {
@@ -131,7 +138,9 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
             } else if cfg!(target_arch = "aarch64") {
                 TargetArch::ARM64
             } else {
-                return Err(CompilerError::ParserError("Unsupported host architecture".to_string()));
+                return Err(CompilerError::ParserError(
+                    "Unsupported host architecture".to_string(),
+                ));
             }
         }
     };
@@ -149,7 +158,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     let tokens = scan(&mut state, &bytes, &mut symbol_table)
         .map_err(|e| CompilerError::LexerError(e.to_string()))?;
     let lexer_time = lexer_start.elapsed().as_secs_f64();
-    
+
     if args.verbose {
         println!("Lexical analysis completed in {:.3}s", lexer_time);
         println!("Generated {} tokens", tokens.len());
@@ -159,7 +168,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     let parser_start = Instant::now();
     let ast = parse(&mut tokens.clone(), &mut symbol_table);
     let parser_time = parser_start.elapsed().as_secs_f64();
-    
+
     if args.verbose {
         println!("Parsing completed in {:.5}s", parser_time);
     }
@@ -170,17 +179,20 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
             ast.print();
         }
     } else {
-        return Err(CompilerError::ParserError("Failed to parse input".to_string()));
+        return Err(CompilerError::ParserError(
+            "Failed to parse input".to_string(),
+        ));
     }
 
     // Intermediate Code generation
     let codegen_start = Instant::now();
     let mut codegen = IRGenerator::new(symbol_table);
-    codegen.generate_code(ast)
+    codegen
+        .generate_code(ast)
         .map_err(|e| CompilerError::CodeGenError(e.to_string()))?;
     let ir_output = codegen.get_output();
     let codegen_time = codegen_start.elapsed().as_secs_f64();
-    
+
     if args.verbose {
         println!("Code generation completed in {:.3}s", codegen_time);
     }
@@ -194,11 +206,12 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     // Assembly generation
     let assembly_start = Instant::now();
     let mut assembly_gen = AssemblyGenerator::new(target_arch);
-    assembly_gen.emit_assembly(&ir_output)
+    assembly_gen
+        .emit_assembly(&ir_output)
         .map_err(|e| CompilerError::RegisterAllocError(e.to_string()))?;
     let assembly_output = assembly_gen.get_output().to_string();
     let assembly_time = assembly_start.elapsed().as_secs_f64();
-    
+
     if args.verbose {
         println!("Assembly generation completed in {:.3}s", assembly_time);
     }
@@ -210,7 +223,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     }
 
     let total_time = start_time.elapsed().as_secs_f64();
-    
+
     let stats = CompilationStats {
         lexer_time,
         parser_time,

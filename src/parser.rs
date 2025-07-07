@@ -1,5 +1,5 @@
 use crate::ast::Exit;
-use crate::ast::{Node, ExpressionNode};
+use crate::ast::{ExpressionNode, Node};
 use crate::block::Block;
 use crate::decl::ConstDecl;
 use crate::decl::ProcDecl;
@@ -306,7 +306,10 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
 
 // condition	= "odd" expression
 //      		| expression ( comparator ) expression .
-fn condition(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn ExpressionNode>> {
+fn condition(
+    iter: &mut Iter<(Token, usize)>,
+    table: &mut SymbolTable,
+) -> Option<Box<dyn ExpressionNode>> {
     unsafe {
         if TOKEN == Token::Odd {
             expect(Token::Odd, iter);
@@ -336,7 +339,10 @@ fn condition(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option
 }
 
 //expression	= [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term }
-fn expression(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn ExpressionNode>> {
+fn expression(
+    iter: &mut Iter<(Token, usize)>,
+    table: &mut SymbolTable,
+) -> Option<Box<dyn ExpressionNode>> {
     unsafe {
         if TOKEN == Token::Plus || TOKEN == Token::Minus || TOKEN == Token::Not {
             next(iter);
@@ -353,7 +359,10 @@ fn expression(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Optio
 }
 
 //term		= factor { ( "*" | "/" | "mod" | "and" ) factor }
-fn term(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn ExpressionNode>> {
+fn term(
+    iter: &mut Iter<(Token, usize)>,
+    table: &mut SymbolTable,
+) -> Option<Box<dyn ExpressionNode>> {
     unsafe {
         let mut lhs = factor(iter, table);
         while TOKEN == Token::Multiply
@@ -371,7 +380,10 @@ fn term(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<
 }
 
 /* factor	= ident | number | "(" expression ")" . */
-fn factor(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn ExpressionNode>> {
+fn factor(
+    iter: &mut Iter<(Token, usize)>,
+    table: &mut SymbolTable,
+) -> Option<Box<dyn ExpressionNode>> {
     unsafe {
         match TOKEN {
             Token::Ident(_) => {

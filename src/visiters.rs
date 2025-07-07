@@ -28,8 +28,10 @@ pub trait ASTVisitor {
     fn visit_binary_operation(&mut self, binary_operation: &BinOp) -> Result<String, String>;
     fn visit_while_statement(&mut self, while_statement: &WhileStatement) -> Result<(), String>;
     fn visit_condition(&mut self, condition: &OddCondition) -> Result<String, String>;
-    fn visit_relational_condition(&mut self, condition: &RelationalCondition)
-        -> Result<String, String>;
+    fn visit_relational_condition(
+        &mut self,
+        condition: &RelationalCondition,
+    ) -> Result<String, String>;
     fn visit_call(&mut self, condition: &CallStmt) -> Result<(), String>;
     fn visit_assign(&mut self, expr: &AssignStmt) -> Result<(), String>;
     fn visit_begin(&mut self, expr: &BeginStmt) -> Result<(), String>;

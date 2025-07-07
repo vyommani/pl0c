@@ -1,4 +1,4 @@
-use crate::ast::{Node, ExpressionNode};
+use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
 
 pub struct Ident {
