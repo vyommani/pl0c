@@ -251,6 +251,75 @@ fn print_stats(stats: &CompilationStats) {
     println!("  Assembly Instr:   {}", stats.assembly_instructions);
 }
 
+fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
+    use std::process::Command;
+    use std::path::Path;
+    use std::fs;
+    let os_name = std::env::consts::OS;
+    let obj_file = "output.o";
+    let as_status;
+    let link_status;
+    if os_name == "macos" {
+        // macOS: support both x86_64 and arm64
+        if arch != "x86_64" && arch != "arm64" {
+            fatal("On macOS, only x86_64 and arm64 architectures are supported.");
+        }
+        as_status = Command::new("as")
+            .arg("-arch").arg(arch)
+            .arg("-o").arg(obj_file)
+            .arg(asm_file)
+            .status();
+        if let Err(e) = &as_status {
+            fatal(&format!("Failed to invoke assembler: {}", e));
+        }
+        if !as_status.as_ref().unwrap().success() {
+            fatal("Assembler failed.");
+        }
+        link_status = Command::new("clang")
+            .arg("-arch").arg(arch)
+            .arg("-o").arg(exe_file)
+            .arg(obj_file)
+            .arg("-e").arg("_start")
+            .status();
+        if let Err(e) = &link_status {
+            fatal(&format!("Failed to invoke linker: {}", e));
+        }
+        if !link_status.as_ref().unwrap().success() {
+            fatal("Linker failed.");
+        }
+    } else if os_name == "linux" {
+        // Linux: only support x86_64
+        if arch != "x86_64" {
+            fatal("On Linux, only x86_64 architecture is supported.");
+        }
+        as_status = Command::new("as")
+            .arg("-o").arg(obj_file)
+            .arg(asm_file)
+            .status();
+        if let Err(e) = &as_status {
+            fatal(&format!("Failed to invoke assembler: {}", e));
+        }
+        if !as_status.as_ref().unwrap().success() {
+            fatal("Assembler failed.");
+        }
+        link_status = Command::new("gcc")
+            .arg("-no-pie")
+            .arg("-o").arg(exe_file)
+            .arg(obj_file)
+            .status();
+        if let Err(e) = &link_status {
+            fatal(&format!("Failed to invoke linker: {}", e));
+        }
+        if !link_status.as_ref().unwrap().success() {
+            fatal("Linker failed.");
+        }
+    } else {
+        fatal(&format!("Unsupported OS: {}", os_name));
+    }
+    // Clean up object file
+    let _ = fs::remove_file(obj_file);
+}
+
 fn main() {
     let args = Cli::parse();
 
@@ -275,18 +344,7 @@ fn main() {
             let asm_file = output_path.to_string_lossy();
             let exe_file = output_path.with_extension("");
             let exe_file_str = exe_file.to_string_lossy();
-            let status = Command::new("src/build.sh")
-                .arg(arch)
-                .arg(&*asm_file)
-                .arg(&*exe_file_str)
-                .status();
-            match status {
-                Ok(s) if s.success() => {
-                    // Do not print anything by default
-                }
-                Ok(s) => fatal(&format!("build.sh failed with exit code: {}", s)),
-                Err(e) => fatal(&format!("Failed to invoke build.sh: {}", e)),
-            }
+            assemble_and_link(arch, &asm_file, &exe_file_str);
 
             if args.timing {
                 print_stats(&stats);
