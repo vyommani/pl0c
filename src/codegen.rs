@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Exit, Node, Variable, ExpressionNode},
+    ast::{Exit, ExpressionNode, Node, Variable},
     block::Block,
     decl::{ConstDecl, ProcDecl, VarDecl},
     expression::{BinOp, OddCondition, RelationalCondition},
@@ -23,6 +23,8 @@ pub struct IRGenerator {
     exit_emitted: bool,
     main_emitted: bool,
     in_procedure: bool,
+    current_scope_level: usize,
+    local_var_offset: isize,
 }
 
 impl IRGenerator {
@@ -38,6 +40,8 @@ impl IRGenerator {
             exit_emitted: false,
             main_emitted: false,
             in_procedure: false,
+            current_scope_level: 0,
+            local_var_offset: 0,
         }
     }
 
@@ -122,15 +126,12 @@ impl IRGenerator {
     ) -> Result<(), String> {
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
-                // Store to local variable on stack
                 write!(self.text_output, "    st [bp-{}], {}\n", offset, source_vreg).unwrap();
             }
             SymbolLocation::GlobalLabel(label) => {
-                // Store to global variable
                 write!(self.text_output, "    st [{}], {}\n", label, source_vreg).unwrap();
             }
             SymbolLocation::None => {
-                // Fallback: use name as label (for backward compatibility)
                 write!(self.text_output, "    st [{}], {}\n", fallback_name, source_vreg).unwrap();
             }
             SymbolLocation::Immediate(_) => {
@@ -177,6 +178,16 @@ impl IRGenerator {
 
     // Helper function to get a variable symbol specifically
     fn get_variable_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
+        // If we're not in a procedure, prefer global variables
+        if !self.in_procedure {
+            if let Some(symbol) = self.symbol_table.get_global_first(name) {
+                if symbol.is_global && matches!(symbol.symbol_type, SymbolType::Variable) {
+                    return Ok(symbol);
+                }
+            }
+        }
+
+        // Otherwise use the normal lookup (innermost scope first)
         self.get_symbol_with_type(name, SymbolType::Variable, operation)
     }
 
@@ -194,14 +205,14 @@ impl IRGenerator {
         Ok(vreg)
     }
 
-     fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) {
+    fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) {
         write!(self.text_output, "    {} {}, {}, {}\n", op, dest, left, right).unwrap();
     }
 
     fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) {
         write!(self.text_output, "    {} {}, {}, {}\n", op, dest, left, right).unwrap();
     }
-     fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) {
+    fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) {
         write!(self.text_output, "    beqz {}, {}\n", vreg, label).unwrap();
     }
     fn emit_jump(&mut self, label: &str) {
@@ -221,7 +232,10 @@ impl IRGenerator {
     }
 
     // Helper: evaluate a condition expression
-    fn evaluate_condition(&mut self, condition: &dyn crate::ast::ExpressionNode) -> Result<String, String> {
+    fn evaluate_condition(
+        &mut self,
+        condition: &dyn crate::ast::ExpressionNode,
+    ) -> Result<String, String> {
         self.emit_expression(condition)
     }
 
@@ -251,7 +265,9 @@ impl IRGenerator {
 
     // Helper: read operation
     fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Result<(), String> {
-        let symbol = self.get_variable_symbol(identifier, "variable in read")?.clone();
+        let symbol = self
+            .get_variable_symbol(identifier, "variable in read")?
+            .clone();
         let vreg = self.allocate_virtual_register();
         write!(self.text_output, "    {} {}\n", operation, vreg).unwrap();
         self.emit_store_to_symbol(&symbol, &vreg, identifier)?;
@@ -314,6 +330,49 @@ impl IRGenerator {
         Ok(result_vreg)
     }
 
+    // Recursively emit all procedures in this block (including nested ones)
+    fn emit_procedures_recursively(&mut self, block: &Block) -> Result<(), String> {
+        for (name, proc_block) in &block.proc_decl.procedurs {
+            self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
+            write!(self.text_output, "{}:\n", name).unwrap();
+
+            self.current_scope_level += 1;
+            self.local_var_offset = 0;
+
+            // Calculate stack size
+            let mut stack_slots = 0;
+            if let Some(proc_block) = proc_block {
+                if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
+                    stack_slots = block.var_decl.var_decl.len();
+                }
+            }
+            let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
+            write!(self.text_output, "    proc_enter {}\n", stack_size).unwrap();
+
+            if let Some(proc_block) = proc_block {
+                self.in_procedure = true;
+                if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
+                    // Emit this procedure's variable declarations first
+                    if !block.var_decl.var_decl.is_empty() {
+                        block.var_decl.accept(self)?;
+                    }
+
+                    // Emit nested procedures
+                    self.emit_procedures_recursively(block)?;
+
+                    // Emit this procedure's statements
+                    if let Some(stmt) = &block.statement {
+                        stmt.accept(self)?;
+                    }
+                }
+                self.in_procedure = false;
+            }
+
+            write!(self.text_output, "    proc_exit\n").unwrap();
+            self.current_scope_level -= 1;
+        }
+        Ok(())
+    }
 }
 
 impl ASTVisitor for IRGenerator {
@@ -442,7 +501,6 @@ impl ASTVisitor for IRGenerator {
             .ok_or_else(|| "Assign statement missing expression".to_string())?;
         let vreg = self.emit_expression(expr.as_ref())?;
         self.emit_store_to_symbol(&symbol, &vreg, &stmt.identifier)?;
-        
         Ok(())
     }
 
@@ -534,38 +592,63 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
-            // Generate IR variable declaration
-            write!(self.bss_output, "var {}\n", var_name).unwrap();
-            // Update the symbol table
-            self.update_symbol_location(
-                var_name,
-                SymbolLocation::GlobalLabel(var_name.clone()),
-                true,
-            );
+            if self.in_procedure {
+                // Local variable in procedure - use stack offset
+                let offset = self.local_var_offset;
+                self.local_var_offset += 8; // 8 bytes per variable
+                                            // Use a unique name for local variables to avoid conflicts
+                let unique_name = format!("{}_{}", var_name, self.current_scope_level);
+                write!(self.bss_output, "var {}\n", unique_name).unwrap();
+                self.update_symbol_location(
+                    var_name, // Keep original name for symbol lookup
+                    SymbolLocation::StackOffset(offset),
+                    false, // Not global
+                );
+            } else {
+                // Global variable
+                write!(self.bss_output, "var {}\n", var_name).unwrap();
+                self.update_symbol_location(
+                    var_name,
+                    SymbolLocation::GlobalLabel(var_name.clone()),
+                    true, // Global
+                );
+            }
         }
         Ok(())
     }
 
     fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Result<(), String> {
-        for (name, proc_block) in &expr.procedurs {
-            self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
-            write!(self.text_output, "{}:\n", name).unwrap();
-            // Calculate stack size for this procedure
-            let mut stack_slots = 0;
-            if let Some(block) = proc_block {
-                // Downcast to Block to access var_decl
-                if let Some(block) = block.as_any().downcast_ref::<crate::block::Block>() {
-                    stack_slots = block.var_decl.var_decl.len();
+        // Only process top-level procedures here
+        // Nested procedures are handled in visit_block
+        if !self.in_procedure {
+            for (name, proc_block) in &expr.procedurs {
+                self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
+                write!(self.text_output, "{}:\n", name).unwrap();
+
+                // Enter procedure scope
+                self.current_scope_level += 1;
+                self.local_var_offset = 0; // Reset local variable offset for this procedure
+
+                // Calculate stack size for this procedure
+                let mut stack_slots = 0;
+                if let Some(block) = proc_block {
+                    // Downcast to Block to access var_decl
+                    if let Some(block) = block.as_any().downcast_ref::<crate::block::Block>() {
+                        stack_slots = block.var_decl.var_decl.len();
+                    }
                 }
+                let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
+                write!(self.text_output, "    proc_enter {}\n", stack_size).unwrap();
+                if let Some(block) = proc_block {
+                    self.in_procedure = true;
+                    block.accept(self)?;
+                    self.in_procedure = false;
+                }
+                write!(self.text_output, "    proc_exit\n").unwrap();
+
+                // Exit procedure scope
+                self.current_scope_level -= 1;
             }
-            let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
-            write!(self.text_output, "    proc_enter {}\n", stack_size).unwrap();
-            if let Some(block) = proc_block {
-                self.in_procedure = true;
-                block.accept(self)?;
-                self.in_procedure = false;
-            }
-            write!(self.text_output, "    proc_exit\n").unwrap();
         }
         Ok(())
     }
@@ -577,9 +660,12 @@ impl ASTVisitor for IRGenerator {
         if !block.var_decl.var_decl.is_empty() {
             block.var_decl.accept(self)?;
         }
-        if !block.proc_decl.procedurs.is_empty() {
-            block.proc_decl.accept(self)?;
+
+        // Recursively emit all procedures at the top level
+        if !self.in_procedure {
+            self.emit_procedures_recursively(block)?;
         }
+
         if let Some(stmt) = &block.statement {
             if !self.in_procedure && !self.main_emitted {
                 write!(self.text_output, "main:\n").unwrap();

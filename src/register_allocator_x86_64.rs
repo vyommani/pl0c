@@ -1,23 +1,46 @@
+use crate::assembly_generator::RegisterAllocator;
+use crate::register_allocator_common::{Register, RegisterConstraints, RegisterError};
 use std::collections::HashMap;
 use std::fmt;
-use crate::register_allocator_common::{RegisterConstraints, RegisterError, Register};
-use crate::assembly_generator::RegisterAllocator;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
-    RAX, RBX, RCX, RDX,
-    RSI, RDI, RBP, RSP,
-    R8, R9, R10, R11, R12, R13, R14, R15,
+    RAX,
+    RBX,
+    RCX,
+    RDX,
+    RSI,
+    RDI,
+    RBP,
+    RSP,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
 }
 
 impl fmt::Display for RegisterName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            RegisterName::RAX => "rax", RegisterName::RBX => "rbx", RegisterName::RCX => "rcx",
-            RegisterName::RDX => "rdx", RegisterName::RSI => "rsi", RegisterName::RDI => "rdi",
-            RegisterName::RBP => "rbp", RegisterName::RSP => "rsp", RegisterName::R8  => "r8",
-            RegisterName::R9  => "r9", RegisterName::R10 => "r10", RegisterName::R11 => "r11",
-            RegisterName::R12 => "r12", RegisterName::R13 => "r13", RegisterName::R14 => "r14",
+            RegisterName::RAX => "rax",
+            RegisterName::RBX => "rbx",
+            RegisterName::RCX => "rcx",
+            RegisterName::RDX => "rdx",
+            RegisterName::RSI => "rsi",
+            RegisterName::RDI => "rdi",
+            RegisterName::RBP => "rbp",
+            RegisterName::RSP => "rsp",
+            RegisterName::R8 => "r8",
+            RegisterName::R9 => "r9",
+            RegisterName::R10 => "r10",
+            RegisterName::R11 => "r11",
+            RegisterName::R12 => "r12",
+            RegisterName::R13 => "r13",
+            RegisterName::R14 => "r14",
             RegisterName::R15 => "r15",
         };
         write!(f, "{}", s)
@@ -27,22 +50,36 @@ impl fmt::Display for RegisterName {
 impl RegisterName {
     pub fn from_usize(i: usize) -> Option<Self> {
         match i {
-            0 => Some(RegisterName::RAX), 1 => Some(RegisterName::RBX), 2 => Some(RegisterName::RCX),
-            3 => Some(RegisterName::RDX), 4 => Some(RegisterName::RSI), 5 => Some(RegisterName::RDI),
-            6 => Some(RegisterName::RBP), 7 => Some(RegisterName::RSP), 8 => Some(RegisterName::R8),
-            9 => Some(RegisterName::R9), 10 => Some(RegisterName::R10), 11 => Some(RegisterName::R11),
-            12 => Some(RegisterName::R12), 13 => Some(RegisterName::R13), 14 => Some(RegisterName::R14),
+            0 => Some(RegisterName::RAX),
+            1 => Some(RegisterName::RBX),
+            2 => Some(RegisterName::RCX),
+            3 => Some(RegisterName::RDX),
+            4 => Some(RegisterName::RSI),
+            5 => Some(RegisterName::RDI),
+            6 => Some(RegisterName::RBP),
+            7 => Some(RegisterName::RSP),
+            8 => Some(RegisterName::R8),
+            9 => Some(RegisterName::R9),
+            10 => Some(RegisterName::R10),
+            11 => Some(RegisterName::R11),
+            12 => Some(RegisterName::R12),
+            13 => Some(RegisterName::R13),
+            14 => Some(RegisterName::R14),
             15 => Some(RegisterName::R15),
             _ => None,
         }
     }
 
     pub fn is_special_purpose(&self) -> bool {
-        matches!(self, 
-            RegisterName::RSP | RegisterName::RBP | 
-            RegisterName::RAX | RegisterName::RCX | 
-            RegisterName::RDX | RegisterName::RSI | 
-            RegisterName::RDI
+        matches!(
+            self,
+            RegisterName::RSP
+                | RegisterName::RBP
+                | RegisterName::RAX
+                | RegisterName::RCX
+                | RegisterName::RDX
+                | RegisterName::RSI
+                | RegisterName::RDI
         )
     }
 
@@ -101,10 +138,22 @@ impl X86_64RegisterAllocator {
         let mut reg_map: [Option<Register<RegisterName>>; NUM_REGS] = Default::default();
         let vreg_map = HashMap::new();
         const NAMES: [RegisterName; 16] = [
-            RegisterName::RAX, RegisterName::RBX, RegisterName::RCX, RegisterName::RDX,
-            RegisterName::RSI, RegisterName::RDI, RegisterName::RBP, RegisterName::RSP,
-            RegisterName::R8, RegisterName::R9, RegisterName::R10, RegisterName::R11,
-            RegisterName::R12, RegisterName::R13, RegisterName::R14, RegisterName::R15,
+            RegisterName::RAX,
+            RegisterName::RBX,
+            RegisterName::RCX,
+            RegisterName::RDX,
+            RegisterName::RSI,
+            RegisterName::RDI,
+            RegisterName::RBP,
+            RegisterName::RSP,
+            RegisterName::R8,
+            RegisterName::R9,
+            RegisterName::R10,
+            RegisterName::R11,
+            RegisterName::R12,
+            RegisterName::R13,
+            RegisterName::R14,
+            RegisterName::R15,
         ];
         for i in 0..NUM_REGS {
             if NAMES[i].get_constraints().can_allocate {
@@ -126,7 +175,10 @@ impl X86_64RegisterAllocator {
         self.free_list.push(p_reg);
     }
 
-    pub fn alloc(&mut self, v_reg: &Register<RegisterName>) -> Result<Register<RegisterName>, RegisterError> {
+    pub fn alloc(
+        &mut self,
+        v_reg: &Register<RegisterName>,
+    ) -> Result<Register<RegisterName>, RegisterError> {
         // Try to allocate a free register
         if let Some(p_reg) = self.free_list.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
@@ -143,7 +195,10 @@ impl X86_64RegisterAllocator {
             }
         }
         // No free register: spill one
-        let (spill_idx, _spilled) = self.reg_map.iter().enumerate()
+        let (spill_idx, _spilled) = self
+            .reg_map
+            .iter()
+            .enumerate()
             .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg)))
             .filter(|(_, reg)| reg.name.get_constraints().can_spill)
             .max_by_key(|(_, reg)| reg.next_uses.first().cloned().unwrap_or(i32::MAX))
@@ -161,7 +216,7 @@ impl X86_64RegisterAllocator {
         }
     }
 
-    pub fn ensure(&mut self, v_reg: &Register<RegisterName>) -> Result<usize, RegisterError>{
+    pub fn ensure(&mut self, v_reg: &Register<RegisterName>) -> Result<usize, RegisterError> {
         // Use the virtual register name as the key
         let vreg_key = v_reg.name.to_string();
         if let Some(reg) = self.vreg_map.get(&vreg_key) {
@@ -182,7 +237,6 @@ impl X86_64RegisterAllocator {
 }
 
 impl RegisterAllocator for X86_64RegisterAllocator {
-
     fn free(&mut self, p_reg: usize) {
         X86_64RegisterAllocator::free(self, p_reg);
     }
@@ -214,13 +268,12 @@ impl RegisterAllocator for X86_64RegisterAllocator {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
         }
     }
-    
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
-    
+
     fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any> {
         self.vreg_map.get(vreg).map(|reg| reg as &dyn std::any::Any)
     }
-    
 }

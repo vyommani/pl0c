@@ -1,10 +1,10 @@
-use crate::register_allocator_x86_64::X86_64RegisterAllocator;
+use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
+use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
 use crate::register_allocator_arm64::Arm64RegisterAllocator;
 use crate::register_allocator_common::{Register, RegisterError};
-use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
-use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
-use std::io;
+use crate::register_allocator_x86_64::X86_64RegisterAllocator;
 use std::any::Any;
+use std::io;
 
 pub enum TargetArch {
     X86_64,
@@ -20,8 +20,17 @@ pub trait RegisterAllocator {
 }
 
 pub trait AssemblyEmitter {
-    fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut dyn io::Write) -> Result<(), io::Error>;
-    fn analyze_register_usage(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Result<(), RegisterError>;
+    fn emit(
+        &self,
+        ir: &[String],
+        allocator: &mut dyn RegisterAllocator,
+        output: &mut dyn io::Write,
+    ) -> Result<(), io::Error>;
+    fn compute_vreg_next_uses(
+        &self,
+        ir: &[String],
+        allocator: &mut dyn RegisterAllocator,
+    ) -> Result<(), RegisterError>;
 }
 
 #[derive()]
@@ -33,7 +42,6 @@ pub struct AssemblyGenerator {
 }
 
 impl AssemblyGenerator {
-
     pub fn new(target: TargetArch) -> Self {
         let allocator: Box<dyn RegisterAllocator> = match target {
             TargetArch::X86_64 => Box::new(X86_64RegisterAllocator::new()),
@@ -68,12 +76,16 @@ impl AssemblyGenerator {
     }
 
     pub fn emit_assembly(&mut self, ir: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.emitter.analyze_register_usage(
-            &ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(),
+        self.emitter.compute_vreg_next_uses(
+            &ir.lines()
+                .map(|line| line.to_string())
+                .collect::<Vec<String>>(),
             &mut *self.allocator,
         )?;
         self.emitter.emit(
-            &ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(),
+            &ir.lines()
+                .map(|line| line.to_string())
+                .collect::<Vec<String>>(),
             &mut *self.allocator,
             &mut self.assembly_output,
         )?;

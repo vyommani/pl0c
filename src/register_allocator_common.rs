@@ -22,9 +22,13 @@ impl fmt::Display for RegisterError {
         match self {
             RegisterError::UnknownRegister(reg) => write!(f, "Unknown register: {}", reg),
             RegisterError::InvalidInstruction(inst) => write!(f, "Invalid instruction: {}", inst),
-            RegisterError::NoRegistersAvailable => write!(f, "No registers available for allocation"),
+            RegisterError::NoRegistersAvailable => {
+                write!(f, "No registers available for allocation")
+            }
             RegisterError::SpillFailed => write!(f, "Failed to spill register to memory"),
-            RegisterError::RegisterConstraintViolation(msg) => write!(f, "Register constraint violation: {}", msg),
+            RegisterError::RegisterConstraintViolation(msg) => {
+                write!(f, "Register constraint violation: {}", msg)
+            }
             RegisterError::StackFrameError(msg) => write!(f, "Stack frame error: {}", msg),
         }
     }
@@ -43,7 +47,13 @@ pub struct Register<RN> {
 
 impl<RN: Clone + Eq> Register<RN> {
     pub fn new(p_reg: usize, v_reg: usize, name: RN, next_uses: Vec<i32>, address: i64) -> Self {
-        Self { p_reg, v_reg, name, next_uses, address }
+        Self {
+            p_reg,
+            v_reg,
+            name,
+            next_uses,
+            address,
+        }
     }
 
     pub fn is_free(&self) -> bool {

@@ -1,12 +1,45 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::{assembly_generator::RegisterAllocator, register_allocator_common::{Register, RegisterConstraints, RegisterError}};
+use crate::{
+    assembly_generator::RegisterAllocator,
+    register_allocator_common::{Register, RegisterConstraints, RegisterError},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
-    X0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15,
-    X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, SP,
+    X0,
+    X1,
+    X2,
+    X3,
+    X4,
+    X5,
+    X6,
+    X7,
+    X8,
+    X9,
+    X10,
+    X11,
+    X12,
+    X13,
+    X14,
+    X15,
+    X16,
+    X17,
+    X18,
+    X19,
+    X20,
+    X21,
+    X22,
+    X23,
+    X24,
+    X25,
+    X26,
+    X27,
+    X28,
+    X29,
+    X30,
+    SP,
 }
 
 impl fmt::Display for RegisterName {
@@ -17,7 +50,10 @@ impl fmt::Display for RegisterName {
 
 impl RegisterName {
     pub fn is_special_purpose(&self) -> bool {
-        matches!(self, RegisterName::SP | RegisterName::X29 | RegisterName::X30)
+        matches!(
+            self,
+            RegisterName::SP | RegisterName::X29 | RegisterName::X30
+        )
     }
 
     pub fn get_constraints(&self) -> RegisterConstraints {
@@ -46,7 +82,6 @@ impl RegisterName {
     }
 }
 
-
 const NUM_REGS: usize = 31; // for ARM64 (X0-X30)
 
 pub struct Arm64RegisterAllocator {
@@ -56,19 +91,47 @@ pub struct Arm64RegisterAllocator {
 }
 
 impl Arm64RegisterAllocator {
-
     pub fn new() -> Self {
         let mut free_list = Vec::with_capacity(NUM_REGS);
         let mut reg_map: [Option<Register<RegisterName>>; NUM_REGS] = Default::default();
         let vreg_map = HashMap::new();
         let names = [
-            RegisterName::X0, RegisterName::X1, RegisterName::X2, RegisterName::X3, RegisterName::X4, RegisterName::X5, RegisterName::X6, RegisterName::X7,
-            RegisterName::X8, RegisterName::X9, RegisterName::X10, RegisterName::X11, RegisterName::X12, RegisterName::X13, RegisterName::X14, RegisterName::X15,
-            RegisterName::X16, RegisterName::X17, RegisterName::X18, RegisterName::X19, RegisterName::X20, RegisterName::X21, RegisterName::X22, RegisterName::X23,
-            RegisterName::X24, RegisterName::X25, RegisterName::X26, RegisterName::X27, RegisterName::X28, RegisterName::X29, RegisterName::X30,
+            RegisterName::X0,
+            RegisterName::X1,
+            RegisterName::X2,
+            RegisterName::X3,
+            RegisterName::X4,
+            RegisterName::X5,
+            RegisterName::X6,
+            RegisterName::X7,
+            RegisterName::X8,
+            RegisterName::X9,
+            RegisterName::X10,
+            RegisterName::X11,
+            RegisterName::X12,
+            RegisterName::X13,
+            RegisterName::X14,
+            RegisterName::X15,
+            RegisterName::X16,
+            RegisterName::X17,
+            RegisterName::X18,
+            RegisterName::X19,
+            RegisterName::X20,
+            RegisterName::X21,
+            RegisterName::X22,
+            RegisterName::X23,
+            RegisterName::X24,
+            RegisterName::X25,
+            RegisterName::X26,
+            RegisterName::X27,
+            RegisterName::X28,
+            RegisterName::X29,
+            RegisterName::X30,
         ];
         // Only allocate from x9-x15 (caller-saved) and x19-x28 (callee-saved)
-        let allocatable_indices = [9,10,11,13,14,15,19,20,21,22,23,24,25,26,27,28];
+        let allocatable_indices = [
+            9, 10, 11, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        ];
         for &i in allocatable_indices.iter().rev() {
             free_list.push(i);
             reg_map[i] = Some(Register::new(i, usize::MAX, names[i].clone(), vec![], 0));
@@ -93,7 +156,10 @@ impl Arm64RegisterAllocator {
         self.free_list.push(p_reg);
     }
 
-    pub fn alloc(&mut self, v_reg: &Register<RegisterName>) -> Result<Register<RegisterName>, RegisterError> {
+    pub fn alloc(
+        &mut self,
+        v_reg: &Register<RegisterName>,
+    ) -> Result<Register<RegisterName>, RegisterError> {
         // Try to allocate a free register
         if let Some(p_reg) = self.free_list.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
@@ -110,7 +176,10 @@ impl Arm64RegisterAllocator {
             }
         }
         // No free register: spill one
-        let (spill_idx, _spilled) = self.reg_map.iter().enumerate()
+        let (spill_idx, _spilled) = self
+            .reg_map
+            .iter()
+            .enumerate()
             .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg)))
             .filter(|(_, reg)| reg.name.get_constraints().can_spill)
             .max_by_key(|(_, reg)| reg.next_uses.first().cloned().unwrap_or(i32::MAX))
@@ -130,7 +199,6 @@ impl Arm64RegisterAllocator {
 }
 
 impl RegisterAllocator for Arm64RegisterAllocator {
-    
     fn free(&mut self, p_reg: usize) {
         self.free(p_reg);
     }
@@ -161,11 +229,11 @@ impl RegisterAllocator for Arm64RegisterAllocator {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
         }
     }
-    
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
-    
+
     fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any> {
         self.vreg_map.get(vreg).map(|reg| reg as &dyn std::any::Any)
     }
