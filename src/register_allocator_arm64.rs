@@ -1,6 +1,7 @@
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::{self, Write as FmtWrite};
 use std::cmp::Reverse;
+use std::sync::LazyLock;
 
 use crate::{
     assembly_generator::RegisterAllocator,
@@ -55,64 +56,43 @@ impl RegisterName {
         }
     }
 
-    pub fn get_constraints(&self) -> RegisterConstraints {
-        match self {
-            RegisterName::SP => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Stack pointer".to_string(),
-            },
-            RegisterName::X29 => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Frame pointer".to_string(),
-            },
-            RegisterName::X30 => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Link register".to_string(),
-            },
-            RegisterName::X12 => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Reserved (e.g., for address calculation)".to_string(),
-            },
-            reg if (0..=7).contains(&reg.index()) => RegisterConstraints {
-                can_allocate: true,
-                can_spill: true,
-                special_purpose: "Function arguments/return value".to_string(),
-            },
-            RegisterName::X8 => RegisterConstraints {
-                can_allocate: true,
-                can_spill: true,
-                special_purpose: "Indirect result, temporary".to_string(),
-            },
-            reg if (9..=15).contains(&reg.index()) => RegisterConstraints {
-                can_allocate: true,
-                can_spill: true,
-                special_purpose: "Caller-saved temporary".to_string(),
-            },
-            reg if (16..=17).contains(&reg.index()) => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Intra-procedure call temporary".to_string(),
-            },
-            RegisterName::X18 => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Platform register (OS-specific)".to_string(),
-            },
-            reg if (19..=28).contains(&reg.index()) => RegisterConstraints {
-                can_allocate: true,
-                can_spill: true,
-                special_purpose: "Callee-saved".to_string(),
-            },
-            _ => RegisterConstraints {
-                can_allocate: false,
-                can_spill: false,
-                special_purpose: "Unknown register".to_string(),
-            },
-        }
+    pub fn get_constraints(&self) -> &'static RegisterConstraints {
+        static CONSTRAINTS: LazyLock<[RegisterConstraints; 32]> = LazyLock::new(|| [
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X0
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X1
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X2
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X3
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X4
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X5
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X6
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X7
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Indirect result, temporary".to_string() }, // X8
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X9
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X10
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X11
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Reserved (e.g., for address calculation)".to_string() }, // X12
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X13
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X14
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X15
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary".to_string() }, // X16
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary".to_string() }, // X17
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Platform register (OS-specific)".to_string() }, // X18
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X19
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X20
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X21
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X22
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X23
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X24
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X25
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X26
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X27
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X28
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Frame pointer".to_string() }, // X29
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Link register".to_string() }, // X30
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Stack pointer".to_string() }, // SP
+        ]);
+
+        &CONSTRAINTS[self.index()]
     }
 }
 
@@ -120,12 +100,14 @@ const NUM_REGS: usize = 32; // X0-X30, SP
 const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
 pub struct Arm64RegisterAllocator {
-    free_caller_saved: BinaryHeap<Reverse<usize>>, // X0-X15
+    free_caller_saved: BinaryHeap<Reverse<usize>>, // X0-X15 (excluding X12)
     free_callee_saved: BinaryHeap<Reverse<usize>>, // X19-X28
     reg_map: [Option<Register<RegisterName>>; NUM_REGS],
     pub vreg_map: HashMap<String, Register<RegisterName>>,
     spill_offset: i32,
+    free_spill_slots: BinaryHeap<Reverse<i32>>, // Track freed spill slots
     live_ranges: HashMap<usize, (i32, i32)>, // v_reg ID -> (start, end) instruction indices
+    current_instruction: i32, // Track current instruction index
 }
 
 impl Arm64RegisterAllocator {
@@ -135,6 +117,7 @@ impl Arm64RegisterAllocator {
         let mut reg_map: [Option<Register<RegisterName>>; NUM_REGS] = Default::default();
         let vreg_map = HashMap::with_capacity(16);
         let live_ranges = HashMap::with_capacity(16);
+        let free_spill_slots = BinaryHeap::new();
 
         for i in 0..NUM_REGS {
             if let Some(name) = RegisterName::from_index(i) {
@@ -162,8 +145,14 @@ impl Arm64RegisterAllocator {
             reg_map,
             vreg_map,
             spill_offset: 0,
+            free_spill_slots,
             live_ranges,
+            current_instruction: 0,
         }
+    }
+
+    pub fn set_instruction_index(&mut self, index: i32) {
+        self.current_instruction = index;
     }
 
     pub fn set_live_range(&mut self, v_reg: usize, start: i32, end: i32) {
@@ -176,15 +165,19 @@ impl Arm64RegisterAllocator {
         }
         let (start1, end1) = self.live_ranges.get(&v_reg).copied().unwrap_or((0, i32::MAX));
         let (start2, end2) = self.live_ranges.get(&other_v_reg).copied().unwrap_or((0, i32::MAX));
-        end1 < start2 || end2 < start1 // No overlap in live ranges
+        end1 < start2 || end2 < start1
     }
 
     fn allocate_spill_slot(&mut self) -> i32 {
-        self.spill_offset += 8;
-        if self.spill_offset % 16 != 0 {
-            self.spill_offset += 8; // Ensure 16-byte alignment
+        if let Some(Reverse(slot)) = self.free_spill_slots.pop() {
+            slot // Reuse freed slot
+        } else {
+            self.spill_offset += 8;
+            if self.spill_offset % 16 != 0 {
+                self.spill_offset += 8; // Ensure 16-byte alignment
+            }
+            self.spill_offset
         }
-        self.spill_offset
     }
 
     pub fn free(&mut self, p_reg: usize) {
@@ -193,6 +186,9 @@ impl Arm64RegisterAllocator {
         }
         if let Some(reg) = self.reg_map[p_reg].as_mut() {
             let v_reg = reg.v_reg;
+            if let Some(spill_offset) = reg.spill_offset {
+                self.free_spill_slots.push(Reverse(spill_offset));
+            }
             reg.v_reg = usize::MAX;
             reg.next_uses.clear();
             reg.address = 0;
@@ -214,87 +210,81 @@ impl Arm64RegisterAllocator {
         vreg_name: &str,
         output: &mut String,
     ) -> Result<Register<RegisterName>, RegisterError> {
-        // Collect coalescing candidates to avoid borrowing conflicts
+        // Update next_uses based on current instruction
+        let mut next_uses = v_reg.next_uses.clone();
+        next_uses.retain(|&use1| use1 >= self.current_instruction);
+
+        // Coalescing
         let coalesce_candidates: Vec<(usize, usize)> = self
             .reg_map
             .iter()
             .enumerate()
-            .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg.v_reg)))
-            .filter(|(i, v_reg)| *v_reg != usize::MAX && self.reg_map[*i].as_ref().unwrap().spill_offset.is_none())
-            .filter(|(i, other_v_reg)| self.can_coalesce(v_reg.v_reg, *other_v_reg))
+            .filter_map(|(i, r)| {
+                r.as_ref().filter(|reg| {
+                    reg.v_reg != usize::MAX
+                        && reg.spill_offset.is_none()
+                        && self.can_coalesce(v_reg.v_reg, reg.v_reg)
+                }).map(|reg| (i, reg.v_reg))
+            })
             .collect();
 
         for (p_reg, _) in coalesce_candidates {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                if !reg.name.get_constraints().can_allocate {
-                    continue;
-                }
                 reg.v_reg = v_reg.v_reg;
-                reg.next_uses = v_reg.next_uses.clone();
+                reg.next_uses = next_uses.clone();
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, (0, i32::MAX)); // Update with actual range
+                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 return Ok(reg.clone());
             }
         }
 
-        // Try caller-saved first
+        // Caller-saved
         if let Some(Reverse(p_reg)) = self.free_caller_saved.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                if !reg.name.get_constraints().can_allocate {
-                    self.free_caller_saved.push(Reverse(p_reg));
-                    return Err(RegisterError::NoRegistersAvailable);
-                }
                 reg.v_reg = v_reg.v_reg;
-                reg.next_uses = v_reg.next_uses.clone();
+                reg.next_uses = next_uses.clone();
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, (0, i32::MAX));
+                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 return Ok(reg.clone());
             }
         }
-        // Try callee-saved
+
+        // Callee-saved
         if let Some(Reverse(p_reg)) = self.free_callee_saved.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                if !reg.name.get_constraints().can_allocate {
-                    self.free_callee_saved.push(Reverse(p_reg));
-                    return Err(RegisterError::NoRegistersAvailable);
-                }
                 reg.v_reg = v_reg.v_reg;
-                reg.next_uses = v_reg.next_uses.clone();
+                reg.next_uses = next_uses.clone();
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, (0, i32::MAX));
+                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 if p_reg >= 19 && p_reg <= 28 {
-                    write!(output, "    stp {}, x29, [sp, -16]!\n", reg.name)
+                    // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
+                    writeln!(output, "    stp {}, x29, [sp, -16]!", reg.name)
                         .map_err(|_| RegisterError::NoRegistersAvailable)?;
                 }
                 return Ok(reg.clone());
             }
         }
-        // Spill a register
-        let spill_candidates: Vec<(usize, i32)> = self
-            .reg_map
-            .iter()
-            .enumerate()
-            .filter_map(|(i, r)| {
-                r.as_ref().map(|reg| {
-                    if reg.name.get_constraints().can_spill && reg.v_reg != usize::MAX {
-                        Some((i, reg.next_uses.first().cloned().unwrap_or(i32::MAX)))
-                    } else {
-                        None
-                    }
-                }).flatten()
-            })
-            .collect();
+
+        // Spill
+        let mut spill_candidates = BinaryHeap::new();
+        for (i, r) in self.reg_map.iter().enumerate() {
+            if let Some(reg) = r.as_ref() {
+                if reg.name.get_constraints().can_spill && reg.v_reg != usize::MAX {
+                    let next_use = reg.next_uses.first().cloned().unwrap_or(i32::MAX);
+                    spill_candidates.push(Reverse((next_use, i)));
+                }
+            }
+        }
 
         let spill_idx = spill_candidates
-            .into_iter()
-            .max_by_key(|(_, next_use)| *next_use)
-            .map(|(i, _)| i)
+            .pop()
+            .map(|Reverse((_, i))| i)
             .ok_or(RegisterError::NoRegistersAvailable)?;
 
         let reg_name = self.reg_map[spill_idx]
@@ -302,17 +292,18 @@ impl Arm64RegisterAllocator {
             .map(|reg| reg.name.clone())
             .ok_or(RegisterError::NoRegistersAvailable)?;
         let spill_offset = self.allocate_spill_slot();
-        write!(output, "    str {}, [sp, -{}]\n", reg_name, spill_offset)
+        // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
+        writeln!(output, "    str {}, [sp, -{}]", reg_name, spill_offset)
             .map_err(|_| RegisterError::NoRegistersAvailable)?;
 
         if let Some(reg) = self.reg_map[spill_idx].as_mut() {
             let old_v_reg = reg.v_reg;
             reg.v_reg = v_reg.v_reg;
-            reg.next_uses = v_reg.next_uses.clone();
+            reg.next_uses = next_uses;
             reg.address = v_reg.address;
             reg.spill_offset = Some(spill_offset);
             self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-            self.live_ranges.insert(v_reg.v_reg, (0, i32::MAX));
+            self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
             self.live_ranges.remove(&old_v_reg);
             Ok(reg.clone())
         } else {
@@ -346,10 +337,12 @@ impl RegisterAllocator for Arm64RegisterAllocator {
         if let Some(vreg) = self.vreg_map.get(v_reg).cloned() {
             let allocated = self.alloc(&vreg, v_reg, output)?;
             if let Some(spill_offset) = vreg.spill_offset {
-                write!(output, "    ldr {}, [sp, -{}]\n", allocated.name, spill_offset)
+                // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
+                writeln!(output, "    ldr {}, [sp, -{}]", allocated.name, spill_offset)
                     .map_err(|_| RegisterError::NoRegistersAvailable)?;
                 if let Some(reg) = self.reg_map[allocated.p_reg].as_mut() {
                     reg.spill_offset = None;
+                    reg.next_uses.retain(|&use1| use1 >= self.current_instruction);
                 }
             }
             Ok(allocated.p_reg)
