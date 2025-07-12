@@ -4,7 +4,7 @@ use std::fmt;
 pub struct RegisterConstraints {
     pub can_allocate: bool,
     pub can_spill: bool,
-    pub special_purpose: String,
+    pub special_purpose: &'static str,
 }
 
 #[derive(Debug)]

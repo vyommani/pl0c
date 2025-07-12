@@ -1,7 +1,6 @@
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::{self, Write as FmtWrite};
 use std::cmp::Reverse;
-use std::sync::LazyLock;
 use crate::code_emitter::CodeEmitter;
 use crate::code_emitter::StringCodeEmitter;
 
@@ -59,40 +58,40 @@ impl RegisterName {
     }
 
     pub fn get_constraints(&self) -> &'static RegisterConstraints {
-        static CONSTRAINTS: LazyLock<[RegisterConstraints; 32]> = LazyLock::new(|| [
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X0
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X1
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X2
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X3
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X4
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X5
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X6
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value".to_string() }, // X7
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Indirect result, temporary".to_string() }, // X8
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X9
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X10
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X11
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Reserved (e.g., for address calculation)".to_string() }, // X12
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X13
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X14
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary".to_string() }, // X15
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary".to_string() }, // X16
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary".to_string() }, // X17
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Platform register (OS-specific)".to_string() }, // X18
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X19
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X20
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X21
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X22
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X23
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X24
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X25
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X26
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X27
-            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved".to_string() }, // X28
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Frame pointer".to_string() }, // X29
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Link register".to_string() }, // X30
-            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Stack pointer".to_string() }, // SP
-        ]);
+        static CONSTRAINTS: [RegisterConstraints; 32] = [
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X0
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X1
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X2
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X3
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X4
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X5
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X6
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" }, // X7
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Indirect result, temporary" }, // X8
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X9
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X10
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X11
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Reserved (e.g., for address calculation)" }, // X12
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X13
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X14
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" }, // X15
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary" }, // X16
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary" }, // X17
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Platform register (OS-specific)" }, // X18
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X19
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X20
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X21
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X22
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X23
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X24
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X25
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X26
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X27
+            RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" }, // X28
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Frame pointer" }, // X29
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Link register" }, // X30
+            RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Stack pointer" }, // SP
+        ];
 
         &CONSTRAINTS[self.index()]
     }

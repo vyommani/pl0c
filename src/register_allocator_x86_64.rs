@@ -88,37 +88,37 @@ impl RegisterName {
             RegisterName::RSP => RegisterConstraints {
                 can_allocate: false,
                 can_spill: false,
-                special_purpose: "Stack pointer".to_string(),
+                special_purpose: "Stack pointer",
             },
             RegisterName::RBP => RegisterConstraints {
                 can_allocate: false,
                 can_spill: false,
-                special_purpose: "Base pointer".to_string(),
+                special_purpose: "Base pointer",
             },
             RegisterName::RAX => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
-                special_purpose: "Return value, some special instructions".to_string(),
+                special_purpose: "Return value, some special instructions",
             },
             RegisterName::RCX => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
-                special_purpose: "Loop counter, string operations".to_string(),
+                special_purpose: "Loop counter, string operations",
             },
             RegisterName::RDX => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
-                special_purpose: "I/O operations, some special instructions".to_string(),
+                special_purpose: "I/O operations, some special instructions",
             },
             RegisterName::RSI | RegisterName::RDI => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
-                special_purpose: "String operations".to_string(),
+                special_purpose: "String operations",
             },
             _ => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
-                special_purpose: "General purpose".to_string(),
+                special_purpose: "General purpose",
             },
         }
     }
