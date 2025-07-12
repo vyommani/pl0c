@@ -1,7 +1,7 @@
 use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
 use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
 use crate::register_allocator_arm64::Arm64RegisterAllocator;
-use crate::register_allocator_common::{Register, RegisterError};
+use crate::register_allocator_common::{RegisterError};
 use crate::register_allocator_x86_64::X86_64RegisterAllocator;
 use std::any::Any;
 use std::io;

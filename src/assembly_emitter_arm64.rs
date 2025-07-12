@@ -6,9 +6,8 @@ use crate::{
 use regex::Regex;
 use std::{
     collections::HashMap,
-    io::{self, Write},
+    io::{self},
 };
-use std::{collections::HashSet, fmt::Write as FmtWrite};
 use crate::ir_dispatch::IROp;
 
 pub struct Arm64AssemblyEmitter;

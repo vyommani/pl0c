@@ -5,10 +5,9 @@ use crate::{
 };
 use crate::ir_dispatch::IROp;
 use regex::Regex;
-use std::collections::HashSet;
 use std::{
     collections::HashMap,
-    io::{self, Write},
+    io::{self},
 };
 
 pub struct X86_64AssemblyEmitter;
