@@ -15,6 +15,7 @@ pub enum RegisterError {
     SpillFailed,
     RegisterConstraintViolation(String),
     StackFrameError(String),
+    OutputError(String),
 }
 
 impl fmt::Display for RegisterError {
@@ -30,6 +31,7 @@ impl fmt::Display for RegisterError {
                 write!(f, "Register constraint violation: {}", msg)
             }
             RegisterError::StackFrameError(msg) => write!(f, "Stack frame error: {}", msg),
+            RegisterError::OutputError(msg) => write!(f, "Output error: {}", msg),
         }
     }
 }

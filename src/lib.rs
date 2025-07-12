@@ -21,6 +21,7 @@ pub mod token;
 pub mod types;
 pub mod visiters;
 pub mod ir_dispatch;
+pub mod code_emitter;
 
 pub const VERSION: &str = "0.1.1";
 

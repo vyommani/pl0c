@@ -2,6 +2,8 @@ use std::collections::{BinaryHeap, HashMap};
 use std::fmt::{self, Write as FmtWrite};
 use std::cmp::Reverse;
 use std::sync::LazyLock;
+use crate::code_emitter::CodeEmitter;
+use crate::code_emitter::StringCodeEmitter;
 
 use crate::{
     assembly_generator::RegisterAllocator,
@@ -205,10 +207,10 @@ impl Arm64RegisterAllocator {
     }
 
     pub fn alloc(
-        &mut self,
-        v_reg: &Register<RegisterName>,
-        vreg_name: &str,
-        output: &mut String,
+    &mut self,
+    v_reg: &Register<RegisterName>,
+    vreg_name: &str,
+    emitter: &mut dyn CodeEmitter,
     ) -> Result<Register<RegisterName>, RegisterError> {
         // Update next_uses based on current instruction
         let mut next_uses = v_reg.next_uses.clone();
@@ -263,9 +265,7 @@ impl Arm64RegisterAllocator {
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
                 self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 if p_reg >= 19 && p_reg <= 28 {
-                    // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
-                    writeln!(output, "    stp {}, x29, [sp, -16]!", reg.name)
-                        .map_err(|_| RegisterError::NoRegistersAvailable)?;
+                    emitter.emit(&format!("stp {}, x29, [sp, -16]!", reg.name))?;
                 }
                 return Ok(reg.clone());
             }
@@ -292,9 +292,7 @@ impl Arm64RegisterAllocator {
             .map(|reg| reg.name.clone())
             .ok_or(RegisterError::NoRegistersAvailable)?;
         let spill_offset = self.allocate_spill_slot();
-        // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
-        writeln!(output, "    str {}, [sp, -{}]", reg_name, spill_offset)
-            .map_err(|_| RegisterError::NoRegistersAvailable)?;
+        emitter.emit(&format!("str {}, [sp, -{}]", reg_name, spill_offset))?;
 
         if let Some(reg) = self.reg_map[spill_idx].as_mut() {
             let old_v_reg = reg.v_reg;
@@ -319,7 +317,9 @@ impl RegisterAllocator for Arm64RegisterAllocator {
 
     fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
         if let Some(reg) = self.vreg_map.get(v_reg).cloned() {
-            let allocated = self.alloc(&reg, v_reg, output)?;
+            let mut emitter = StringCodeEmitter::new(output);
+            let allocated = self.alloc(&reg, v_reg, &mut emitter)?;
+            emitter.flush()?;
             Ok(allocated.p_reg)
         } else {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
@@ -335,16 +335,16 @@ impl RegisterAllocator for Arm64RegisterAllocator {
             }
         }
         if let Some(vreg) = self.vreg_map.get(v_reg).cloned() {
-            let allocated = self.alloc(&vreg, v_reg, output)?;
+            let mut emitter = StringCodeEmitter::new(output);
+            let allocated = self.alloc(&vreg, v_reg, &mut emitter)?;
             if let Some(spill_offset) = vreg.spill_offset {
-                // Use NoRegistersAvailable for now; add OutputError to RegisterError if needed
-                writeln!(output, "    ldr {}, [sp, -{}]", allocated.name, spill_offset)
-                    .map_err(|_| RegisterError::NoRegistersAvailable)?;
+                emitter.emit_ldr(&allocated.name, spill_offset)?;
                 if let Some(reg) = self.reg_map[allocated.p_reg].as_mut() {
                     reg.spill_offset = None;
                     reg.next_uses.retain(|&use1| use1 >= self.current_instruction);
                 }
             }
+            emitter.flush()?;
             Ok(allocated.p_reg)
         } else {
             Err(RegisterError::UnknownRegister(v_reg.to_string()))
