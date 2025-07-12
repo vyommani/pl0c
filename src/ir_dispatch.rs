@@ -1,0 +1,57 @@
+// Shared IR opcode enum and parsing logic for both ARM and x86 emitters
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum IROp {
+    ProcEnter,
+    ProcExit,
+    Li,
+    Ld,
+    St,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    CmpGt,
+    CmpLt,
+    CmpLe,
+    CmpGe,
+    CmpEq,
+    CmpNe,
+    IsOdd,
+    Beqz,
+    Jump,
+    Call,
+    Exit,
+    WriteInt,
+    ReadInt,
+    Unknown,
+}
+
+impl IROp {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "proc_enter" => IROp::ProcEnter,
+            "proc_exit" => IROp::ProcExit,
+            "li" => IROp::Li,
+            "ld" => IROp::Ld,
+            "st" => IROp::St,
+            "add" => IROp::Add,
+            "sub" => IROp::Sub,
+            "mul" => IROp::Mul,
+            "div" => IROp::Div,
+            "cmp_gt" => IROp::CmpGt,
+            "cmp_lt" => IROp::CmpLt,
+            "cmp_le" => IROp::CmpLe,
+            "cmp_ge" => IROp::CmpGe,
+            "cmp_eq" => IROp::CmpEq,
+            "cmp_ne" => IROp::CmpNe,
+            "is_odd" => IROp::IsOdd,
+            "beqz" => IROp::Beqz,
+            "jump" => IROp::Jump,
+            "call" => IROp::Call,
+            "exit" => IROp::Exit,
+            "write_int" => IROp::WriteInt,
+            "read_int" => IROp::ReadInt,
+            _ => IROp::Unknown,
+        }
+    }
+} 
