@@ -43,6 +43,7 @@ pub struct Register<RN> {
     pub name: RN,
     pub next_uses: Vec<i32>,
     pub address: i64,
+    pub spill_offset: Option<i32>, // Spill slot offset (None if not spilled)
 }
 
 impl<RN: Clone + Eq> Register<RN> {
@@ -53,6 +54,7 @@ impl<RN: Clone + Eq> Register<RN> {
             name,
             next_uses,
             address,
+            spill_offset: None,
         }
     }
 

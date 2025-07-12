@@ -24,7 +24,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         &self,
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
-        output: &mut dyn std::io::Write,
+        output: &mut String,
     ) -> Result<(), io::Error> {
         // Step 1: Collect variables, constants, proc_output, and main_output
         let (variables, constants, needs_write_int, needs_read_int) = Self::collect_data_info(ir);
@@ -39,7 +39,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         let mut footer = String::new();
         self.emit_footer(&mut footer, needs_write_int, needs_read_int)?;
         let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
-        output.write_all(final_output.as_bytes())?;
+        output.push_str(&final_output);
         Ok(())
     }
 
@@ -223,7 +223,7 @@ impl Arm64AssemblyEmitter {
         output: &mut String,
     ) -> Result<(), io::Error> {
         let psrc = allocator
-            .ensure(src)
+            .ensure(src, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         if psrc != 0 {
             write_line(output, format_args!("    mov x0, x{}\n", psrc))?;
@@ -243,7 +243,7 @@ impl Arm64AssemblyEmitter {
         output: &mut String,
     ) -> Result<(), io::Error> {
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         write_line(output, format_args!("    bl _read_int\n"))?;
         write_line(output, format_args!("    mov x{}, x0\n", pdst))?;
@@ -439,7 +439,7 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm))?;
         if self.is_dead_after(dst, idx, allocator) {
@@ -459,7 +459,7 @@ impl Arm64AssemblyEmitter {
         let src = rest.get(1).unwrap_or(&"");
         let src = src.trim().replace(['[', ']', ','], "");
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
 
         // Check if this is a stack offset access [bp-offset]
@@ -492,7 +492,7 @@ impl Arm64AssemblyEmitter {
         let dst = dst.trim().replace(['[', ']', ','], "");
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src)
+            .ensure(src, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
 
         // Check if this is a stack offset access [bp-offset]
@@ -526,13 +526,13 @@ impl Arm64AssemblyEmitter {
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
         let psrc1 = allocator
-            .ensure(src1)
+            .ensure(src1, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         let psrc2 = allocator
-            .ensure(src2)
+            .ensure(src2, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         // Never use x12 for computation
         if psrc1 == 12 || psrc2 == 12 || pdst == 12 {
@@ -569,13 +569,13 @@ impl Arm64AssemblyEmitter {
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
         let psrc1 = allocator
-            .ensure(src1)
+            .ensure(src1, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         let psrc2 = allocator
-            .ensure(src2)
+            .ensure(src2, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         // Never use x12 for computation
         if psrc1 == 12 || psrc2 == 12 || pdst == 12 {
@@ -621,10 +621,10 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src)
+            .ensure(src, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         let pdst = allocator
-            .alloc(dst)
+            .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         write_line(output, format_args!("    and x{}, x{}, #1\n", pdst, psrc))?;
         if self.is_dead_after(src, idx, allocator) {
@@ -658,7 +658,7 @@ impl Arm64AssemblyEmitter {
         let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let label = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src)
+            .ensure(src, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
         write_line(output, format_args!("    cbz x{}, {}\n", psrc, label))?;
         if self.is_dead_after(src, idx, allocator) {

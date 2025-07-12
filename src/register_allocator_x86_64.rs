@@ -216,22 +216,20 @@ impl X86_64RegisterAllocator {
         }
     }
 
-    pub fn ensure(&mut self, v_reg: &Register<RegisterName>) -> Result<usize, RegisterError> {
-        // Use the virtual register name as the key
-        let vreg_key = v_reg.name.to_string();
-        if let Some(reg) = self.vreg_map.get(&vreg_key) {
+    pub fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
+        if let Some(reg) = self.vreg_map.get(v_reg) {
             for mapped_reg in self.reg_map.iter().flatten() {
                 if mapped_reg.v_reg == reg.v_reg {
                     return Ok(mapped_reg.p_reg);
                 }
             }
         }
-        if let Some(vreg) = self.vreg_map.get(&vreg_key) {
+        if let Some(vreg) = self.vreg_map.get(v_reg) {
             let vreg_cloned = vreg.clone();
             let reg = self.alloc(&vreg_cloned)?;
             return Ok(reg.p_reg);
         } else {
-            Err(RegisterError::UnknownRegister(vreg_key))
+            Err(RegisterError::UnknownRegister(v_reg.to_string()))
         }
     }
 }
@@ -241,18 +239,27 @@ impl RegisterAllocator for X86_64RegisterAllocator {
         X86_64RegisterAllocator::free(self, p_reg);
     }
 
-    fn alloc(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
-        // You need to parse v_reg (e.g., "v1") to an index or use your vreg_map
+    fn alloc(&mut self, v_reg: &str, _output: &mut String) -> Result<usize, RegisterError> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
-            let reg = reg.clone();
-            let reg = self.alloc(&reg)?;
-            Ok(reg.p_reg)
+            // Check if already allocated
+            for mapped_reg in self.reg_map.iter().flatten() {
+                if mapped_reg.v_reg == reg.v_reg {
+                    return Ok(mapped_reg.p_reg);
+                }
+            }
+            // Allocate new register
+            let reg_cloned = reg.clone();
+            let allocated_reg = self.alloc(&reg_cloned)?;
+            Ok(allocated_reg.p_reg)
         } else {
-            Err(RegisterError::UnknownRegister(v_reg.to_string()))
+            Err(RegisterError::UnknownRegister(format!(
+                "Virtual register '{}' not found",
+                v_reg
+            )))
         }
     }
 
-    fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
+    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
             for mapped_reg in self.reg_map.iter().flatten() {
                 if mapped_reg.v_reg == reg.v_reg {

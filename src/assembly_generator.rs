@@ -13,8 +13,8 @@ pub enum TargetArch {
 
 pub trait RegisterAllocator {
     fn free(&mut self, p_reg: usize);
-    fn alloc(&mut self, v_reg: &str) -> Result<usize, RegisterError>;
-    fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError>;
+    fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError>;
+    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError>;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any>;
 }
@@ -24,7 +24,7 @@ pub trait AssemblyEmitter {
         &self,
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
-        output: &mut dyn io::Write,
+        output: &mut String,
     ) -> Result<(), io::Error>;
     fn compute_vreg_next_uses(
         &self,
@@ -37,7 +37,7 @@ pub trait AssemblyEmitter {
 pub struct AssemblyGenerator {
     allocator: Box<dyn RegisterAllocator>,
     emitter: Box<dyn AssemblyEmitter>,
-    assembly_output: Vec<u8>,
+    assembly_output: String,
     target: TargetArch,
 }
 
@@ -55,7 +55,7 @@ impl AssemblyGenerator {
             target,
             allocator,
             emitter,
-            assembly_output: Vec::new(),
+            assembly_output: String::new(),
         }
     }
 
@@ -64,15 +64,15 @@ impl AssemblyGenerator {
     }
 
     pub fn get_output(&self) -> &str {
-        std::str::from_utf8(&self.assembly_output).unwrap_or("")
+        &self.assembly_output
     }
 
-    pub fn alloc(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
-        self.allocator.alloc(v_reg)
+    pub fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+        self.allocator.alloc(v_reg, output)
     }
 
-    pub fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
-        self.allocator.ensure(v_reg)
+    pub fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+        self.allocator.ensure(v_reg, output)
     }
 
     pub fn emit_assembly(&mut self, ir: &str) -> Result<(), Box<dyn std::error::Error>> {
