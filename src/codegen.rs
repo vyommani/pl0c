@@ -666,14 +666,10 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
-            if self.in_procedure {
-                // Local variable in procedure - use stack offset
+            if self.in_procedure || !self.main_emitted {
+                // Local variable in procedure or main - use stack offset
                 let offset = self.local_var_offset;
                 self.local_var_offset += 8; // 8 bytes per variable
-                                            // Use a unique name for local variables to avoid conflicts
-                let unique_name = format!("{}_{}", var_name, self.current_scope_level);
-                let mut emitter = StringCodeEmitter::new(&mut self.bss_output);
-                emitter.emit_var(&unique_name).unwrap();
                 self.update_symbol_location(
                     var_name, // Keep original name for symbol lookup
                     SymbolLocation::StackOffset(offset),
@@ -735,6 +731,9 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) -> Result<(), String> {
+        if !self.in_procedure {
+            self.local_var_offset = 8; // Reset stack offset for main
+        }
         if !block.const_decl.const_decl.is_empty() {
             block.const_decl.accept(self)?;
         }
@@ -753,6 +752,25 @@ impl ASTVisitor for IRGenerator {
                 self.emit_label("main")
                     .map_err(|e| e.to_string())?;
                 self.main_emitted = true;
+                // Emit initialization for all stack variables in main
+                // Find all variables with SymbolLocation::StackOffset
+                let mut stack_vars = Vec::new();
+                for symbol in self.symbol_table.all_symbols() {
+                    if let SymbolLocation::StackOffset(offset) = symbol.location {
+                        if !symbol.is_global {
+                            // We don't have the name, but we only need offset
+                            stack_vars.push(offset);
+                        }
+                    }
+                }
+                stack_vars.sort();
+                stack_vars.dedup();
+                for offset in stack_vars {
+                    let vreg = self.allocate_virtual_register();
+                    let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+                    emitter.emit_li(&vreg, "0").unwrap();
+                    emitter.emit_st(&format!("bp-{}", offset), &vreg).unwrap();
+                }
             }
             stmt.accept(self)?;
         }

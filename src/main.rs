@@ -292,9 +292,10 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
         if arch != "x86_64" {
             fatal("On Linux, only x86_64 architecture is supported.");
         }
-        as_status = Command::new("as")
-            .arg("-o").arg(obj_file)
+        as_status = Command::new("nasm")
+            .arg("-f").arg("elf64")
             .arg(asm_file)
+            .arg("-o").arg(obj_file)
             .status();
         if let Err(e) = &as_status {
             fatal(&format!("Failed to invoke assembler: {}", e));
@@ -302,10 +303,9 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
         if !as_status.as_ref().unwrap().success() {
             fatal("Assembler failed.");
         }
-        link_status = Command::new("gcc")
-            .arg("-no-pie")
-            .arg("-o").arg(exe_file)
+        link_status = Command::new("ld")
             .arg(obj_file)
+            .arg("-o").arg(exe_file)
             .status();
         if let Err(e) = &link_status {
             fatal(&format!("Failed to invoke linker: {}", e));

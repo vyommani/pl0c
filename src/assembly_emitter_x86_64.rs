@@ -6,11 +6,69 @@ use crate::{
 use crate::ir_dispatch::IROp;
 use regex::Regex;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{self},
 };
 
 pub struct X86_64AssemblyEmitter;
+
+struct StackAnalyzer {
+    main_stack_vars: HashSet<String>,
+    proc_stack_vars: HashMap<String, HashSet<String>>,
+}
+
+impl StackAnalyzer {
+    fn new(ir: &[String]) -> Self {
+        let mut main_stack_vars = HashSet::new();
+        let mut proc_stack_vars = HashMap::new();
+        let mut current_proc = None;
+        let mut in_proc = false;
+
+        for line in ir {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with("var ") || line.starts_with("const ") {
+                continue;
+            }
+            if line.ends_with(':') {
+                let label = &line[..line.len() - 1];
+                if label == "main" {
+                    in_proc = false;
+                    continue;
+                }
+                let next_line = ir.get(ir.iter().position(|l| l == line).unwrap() + 1).map(|s| s.trim()).unwrap_or("");
+                if next_line.starts_with("proc_enter") {
+                    in_proc = true;
+                    current_proc = Some(label.to_string());
+                }
+                continue;
+            }
+            if line.contains("[bp-") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                // Check if the instruction is 'st' or 'ld'
+                if parts[0] == "st" || parts[0] == "ld" {
+                    // Look for stack variable references in the instruction
+                    for part in &parts {
+                        if part.contains("[bp-") {
+                            let var_clean = X86_64AssemblyEmitter::strip_brackets(part);
+                            if in_proc {
+                                proc_stack_vars
+                                    .entry(current_proc.clone().unwrap_or_default())
+                                    .or_insert_with(HashSet::new)
+                                    .insert(var_clean.to_string());
+                            } else {
+                                main_stack_vars.insert(var_clean.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        StackAnalyzer { main_stack_vars, proc_stack_vars }
+    }
+}
 
 impl AssemblyEmitter for X86_64AssemblyEmitter {
     fn emit(
@@ -19,16 +77,18 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
     ) -> Result<(), io::Error> {
-        // Collect variables and flags
-        let (variables, needs_write_int, needs_read_int) = Self::collect_data_info(ir);
-        // Emit bss section for variables
-        Self::emit_data_section(output, &variables)?;
-        // Add text section
-        output.push_str(".section .text\n");
-        // Process IR lines
-        self.process_ir_lines(ir, allocator, output)?;
-        // Emit footer
-        self.emit_footer_conditional(output, needs_write_int, needs_read_int)?;
+        let (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings) = Self::collect_data_info(ir);
+        let mut data_output = String::new();
+        Self::emit_data_section(&mut data_output, &variables, &constants, &strings, needs_write_int, needs_write_str)?;
+        let mut proc_output = String::new();
+        let mut main_output = String::new();
+        let stack_analyzer = StackAnalyzer::new(ir);
+        self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output, &stack_analyzer, &constants,&strings)?;
+        let new_main_output = Self::emit_main_section(&main_output, &stack_analyzer)?;
+        let mut footer = String::new();
+        self.emit_footer_conditional(&mut footer, needs_write_int, needs_read_int, needs_write_str)?;
+        let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
+        output.push_str(&final_output);
         Ok(())
     }
 
@@ -37,6 +97,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
     ) -> Result<(), crate::register_allocator_common::RegisterError> {
+        // Optimization: Track live ranges for better register reuse
         let mut vreg_uses: HashMap<String, Vec<usize>> = HashMap::new();
         let vreg_regex = Regex::new(r"v[0-9]+\b").unwrap();
         for (idx, line) in ir.iter().enumerate() {
@@ -49,19 +110,23 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
                 vreg_uses.entry(vreg.to_string()).or_default().push(idx);
             }
         }
-        // Insert each vreg into vreg_map with its next-use info
         for (i, (vreg, uses)) in vreg_uses.into_iter().enumerate() {
+            let live_range = if let (Some(&first), Some(&last)) = (uses.iter().min(), uses.iter().max()) {
+                (first as i32, last as i32)
+            } else {
+                (0, 0)
+            };
             let reg = Register::new(
                 usize::MAX,
                 i,
                 RegisterName::RSP,
                 uses.into_iter().map(|u| u as i32).collect(),
-                0,
+                live_range.1.into(),
             );
             if let Some(alloc) = allocator
                 .as_any_mut()
-                .downcast_mut::<crate::register_allocator_x86_64::X86_64RegisterAllocator>(
-            ) {
+                .downcast_mut::<crate::register_allocator_x86_64::X86_64RegisterAllocator>()
+            {
                 alloc.vreg_map.insert(vreg, reg);
             }
         }
@@ -70,11 +135,22 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
 }
 
 impl X86_64AssemblyEmitter {
-    // Helper to collect variables and flags
-    fn collect_data_info(ir: &[String]) -> (std::collections::HashSet<String>, bool, bool) {
-        let mut variables = std::collections::HashSet::new();
+    fn collect_data_info(ir: &[String]) -> (
+        HashSet<String>,
+        HashMap<String, String>,
+        bool,
+        bool,
+        bool,
+        Vec<String>,
+    ) {
+        // Optimization: Only include used variables
+        let mut variables = HashSet::new();
+        let mut constants = HashMap::new();
+        let mut used_vars = HashSet::new();
         let mut needs_write_int = false;
         let mut needs_read_int = false;
+        let mut needs_write_str = false;
+        let mut strings = Vec::new();
         for line in ir {
             let line = line.trim();
             if line.starts_with("var ") {
@@ -85,36 +161,87 @@ impl X86_64AssemblyEmitter {
                 for v in vars {
                     variables.insert(v.to_string());
                 }
-            }
-            if line.contains("write_int") {
+            } else if line.starts_with("const ") {
+                if let Some((name, value)) = line[6..].split_once('=') {
+                    constants.insert(name.trim().to_string(), value.trim().to_string());
+                }
+            } else if line.contains("write_int") {
                 needs_write_int = true;
-            }
-            if line.contains("read_int") {
+            } else if line.contains("read_int") {
                 needs_read_int = true;
+            } else if line.contains("write_str") {
+                needs_write_str = true;
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(str_label) = parts.get(1) {
+                    let str_clean = str_label.trim_matches(|c| c == ',' || c == '"' || c == '\'');
+                    if !str_clean.is_empty() && !strings.contains(&str_clean.to_string()) {
+                        strings.push(str_clean.to_string());
+                    }
+                }
+            } else {
+                for word in line.split_whitespace() {
+                    let clean = word.trim_matches(|c| c == ',' || c == '[' || c == ']');
+                    if variables.contains(clean) {
+                        used_vars.insert(clean.to_string());
+                    }
+                }
             }
         }
-        (variables, needs_write_int, needs_read_int)
+        (used_vars, constants, needs_write_int, needs_read_int, needs_write_str, strings)
     }
 
-    // Helper to emit bss section for variables
-    fn emit_data_section(output: &mut String, variables: &std::collections::HashSet<String>) -> std::io::Result<()> {
+    fn emit_data_section(
+        output: &mut String,
+        variables: &HashSet<String>,
+        constants: &HashMap<String, String>,
+        strings: &[String],
+        needs_write_int: bool,
+        needs_write_str: bool,
+    ) -> io::Result<()> {
+        let mut used_constants = HashSet::new();
+        for (name, _) in constants {
+            if output.contains(name) {
+                used_constants.insert(name.clone());
+            }
+        }
+        output.push_str("section .data\n");
+        if !strings.is_empty() || needs_write_int || needs_write_str {
+            output.push_str("    newline db 0xA\n");
+            for (i, s) in strings.iter().enumerate() {
+                output.push_str(&format!("    string_{} db \"{}\", 0\n", i, s));
+            }
+        }
+        if needs_write_int {
+            output.push_str("    digitSpace times 20 db 0\n");
+        }
+        for (name, value) in constants {
+            if used_constants.contains(name) {
+                output.push_str(&format!("    {} dq {}\n", name, value));
+            }
+        }
         if !variables.is_empty() {
-            output.push_str(".section .bss\n");
-            output.push_str(".align 8\n");
+            output.push_str("section .bss\n");
+            output.push_str("    align 8\n");
             for v in variables {
-                output.push_str(&format!("{}:\n", v));
-                output.push_str("    .zero 8\n");
+                output.push_str(&format!("    {} resq 1\n", v));
             }
         }
         Ok(())
     }
 
-    // Helper to process IR lines
-    #[allow(clippy::too_many_arguments)]
-    fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> std::io::Result<()> {
+    fn process_ir_lines(
+        &self,
+        ir: &[String],
+        allocator: &mut dyn RegisterAllocator,
+        proc_output: &mut String,
+        main_output: &mut String,
+        stack_analyzer: &StackAnalyzer,
+        constants: &HashMap<String, String>,
+        strings: &[String],
+    ) -> io::Result<()> {
         let mut in_proc = false;
-        let mut is_main = false;
-        let mut emitted_main = false;
+        let mut current_proc = None;
+        let mut proc_stack = Vec::new();
         for (idx, line) in ir.iter().enumerate() {
             let line = line.trim();
             if line.is_empty()
@@ -124,19 +251,24 @@ impl X86_64AssemblyEmitter {
             {
                 continue;
             }
-            // Handle labels
             if line.ends_with(':') {
                 let label = &line[..line.len() - 1];
                 if label == "main" {
-                    output.push_str(".global main\n");
-                    output.push_str("main:\n");
-                    X86_64AssemblyEmitter::emit_prologue(output)?;
-                    is_main = true;
-                    in_proc = false;
-                } else {
-                    output.push_str(&format!("{}\n", line));
-                    is_main = false;
+                    in_proc = false; // Ensure we are not in a procedure when entering main
+                    continue; // Do NOT emit main: label or prologue here
+                }
+                let next_line = ir.get(idx + 1).map(|s| s.trim()).unwrap_or("");
+                if next_line.starts_with("proc_enter") {
                     in_proc = true;
+                    current_proc = Some(label.to_string());
+                    proc_stack.push(label.to_string());
+                    proc_output.push_str(&format!("{}:\n", label));
+                } else {
+                    if in_proc {
+                        proc_output.push_str(&format!("{}:\n", label));
+                    } else {
+                        main_output.push_str(&format!("{}:\n", label));
+                    }
                 }
                 continue;
             }
@@ -144,36 +276,94 @@ impl X86_64AssemblyEmitter {
             let op_str = parts.next().unwrap_or("");
             let rest: Vec<&str> = parts.collect();
             let op = IROp::from_str(op_str);
-            self.emit_ir_instruction_x86_64(
-                op,
-                op_str,
-                &rest,
-                idx,
-                allocator,
-                output,
-                &mut in_proc,
-                &mut is_main,
-                line,
-            )?;
+            if op == IROp::ProcExit {
+                self.emit_ir_instruction_x86_64(
+                    op,
+                    op_str,
+                    &rest,
+                    idx,
+                    allocator,
+                    if in_proc { proc_output } else { main_output },
+                    &mut in_proc,
+                    &mut false,
+                    line,
+                    stack_analyzer,
+                    constants,
+                    strings,
+                )?;
+                in_proc = false; // Explicitly reset in_proc after proc_exit
+                continue;
+            }
+            if in_proc {
+                self.emit_ir_instruction_x86_64(
+                    op,
+                    op_str,
+                    &rest,
+                    idx,
+                    allocator,
+                    proc_output,
+                    &mut in_proc,
+                    &mut false,
+                    line,
+                    stack_analyzer,
+                    constants,
+                    strings,
+                )?;
+            } else {
+                self.emit_ir_instruction_x86_64(
+                    op,
+                    op_str,
+                    &rest,
+                    idx,
+                    allocator,
+                    main_output,
+                    &mut in_proc,
+                    &mut false,
+                    line,
+                    stack_analyzer,
+                    constants,
+                    strings,
+                )?;
+            }
         }
-        // Add epilogue for main if we were in main
-        if is_main {
-            X86_64AssemblyEmitter::emit_epilogue(output)?;
+        Ok(())
+    }
+
+    fn emit_main_section(main_output: &str, stack_analyzer: &StackAnalyzer) -> io::Result<String> {
+        let mut new_main_output = String::new();
+        new_main_output.push_str("section .text\n");
+        new_main_output.push_str("global _start\n");
+        new_main_output.push_str("global main\n");
+        new_main_output.push_str("_start:\n");
+        new_main_output.push_str("    call main\n");
+        new_main_output.push_str("    mov rdi, rax\n");
+        new_main_output.push_str("    mov rax, 60\n");
+        new_main_output.push_str("    syscall\n");
+        new_main_output.push_str("    ret\n");
+        new_main_output.push_str("main:\n");
+        Self::emit_prologue(&mut new_main_output, stack_analyzer)?;
+        new_main_output.push_str(main_output);
+        Self::emit_epilogue(&mut new_main_output)?;
+        Ok(new_main_output)
+    }
+
+    fn assemble_final_output(
+        data_output: &str,
+        new_main_output: &str,
+        proc_output: &str,
+        footer: &str,
+    ) -> io::Result<String> {
+        let mut final_output = String::new();
+        if !data_output.is_empty() {
+            final_output.push_str(data_output);
+            final_output.push_str("\n");
         }
-        Ok(())
+        final_output.push_str(new_main_output);
+        final_output.push_str(proc_output);
+        final_output.push_str(footer);
+        Ok(final_output)
     }
 
-    // Helper to emit main section 
-    fn emit_main_section() -> std::io::Result<()> {
-        Ok(())
-    }
-
-    // Helper to assemble final output
-    fn assemble_final_output() -> std::io::Result<()> {
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
     fn emit_ir_instruction_x86_64(
         &self,
         op: IROp,
@@ -183,59 +373,41 @@ impl X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         in_proc: &mut bool,
-        is_main: &mut bool,
+        _is_main: &mut bool,
         line: &str,
+        stack_analyzer: &StackAnalyzer,
+        constants: &HashMap<String, String>,
+        strings: &[String],
     ) -> Result<(), io::Error> {
         match op {
             IROp::ProcEnter => {
-                if *in_proc {
-                    X86_64AssemblyEmitter::emit_prologue(output)?;
+                *in_proc = true;
+                Self::emit_prologue(output, stack_analyzer)?;
+                let size = rest.get(0).unwrap_or(&"0").trim_end_matches(',').parse::<u32>().unwrap_or(0);
+                if size > 0 {
+                    output.push_str(&format!("    sub rsp, {}\n", size));
                 }
-                let _n = rest.get(0).unwrap_or(&"0").trim_end_matches(',');
             }
             IROp::ProcExit => {
-                if *in_proc {
-                    X86_64AssemblyEmitter::emit_epilogue(output)?;
-                } else {
-                    self.emit_exit(output)?;
-                }
+                Self::emit_epilogue(output)?;
+                *in_proc = false;
             }
-            IROp::Li => {
-                self.emit_li(rest, idx, allocator, output)?;
-            }
-            IROp::Ld => {
-                self.emit_ld(rest, idx, allocator, output)?;
-            }
-            IROp::St => {
-                self.emit_st(rest, idx, allocator, output)?;
-            }
+            IROp::Exit => {}
+            IROp::Li => self.emit_li(rest, idx, allocator, output, constants)?,
+            IROp::Ld => self.emit_ld(rest, idx, allocator, output, constants)?,
+            IROp::St => self.emit_st(rest, idx, allocator, output, constants)?,
             IROp::Add | IROp::Sub | IROp::Mul => {
-                self.emit_binop(op_str, rest, idx, allocator, output)?;
+                self.emit_binop(op_str, rest, idx, allocator, output)?
             }
-            IROp::Div => {
-                self.emit_binop("idiv", rest, idx, allocator, output)?;
-            }
-            IROp::Mod => {
-                output.push_str("    // TODO: Modulo operation not implemented for x86_64\n");
-            }
+            IROp::Div => self.emit_binop("idiv", rest, idx, allocator, output)?,
+            IROp::Mod => self.emit_binop("mod", rest, idx, allocator, output)?,
             IROp::CmpGt | IROp::CmpLt | IROp::CmpLe | IROp::CmpGe | IROp::CmpEq | IROp::CmpNe => {
-                self.emit_relational(op_str, rest, idx, allocator, output)?;
+                self.emit_relational(op_str, rest, idx, allocator, output)?
             }
-            IROp::IsOdd => {
-                self.emit_is_odd(rest, idx, allocator, output)?;
-            }
-            IROp::Beqz => {
-                self.emit_beqz(rest, idx, allocator, output)?;
-            }
-            IROp::Jump => {
-                self.emit_jump(rest, idx, allocator, output)?;
-            }
-            IROp::Call => {
-                self.emit_call(rest, idx, allocator, output)?;
-            }
-            IROp::Exit => {
-                self.emit_exit(output)?;
-            }
+            IROp::IsOdd => self.emit_is_odd(rest, idx, allocator, output)?,
+            IROp::Beqz => self.emit_beqz(rest, idx, allocator, output)?,
+            IROp::Jump => self.emit_jump(rest, idx, allocator, output)?,
+            IROp::Call => self.emit_call(rest, idx, allocator, output)?,
             IROp::WriteInt => {
                 let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
                 self.emit_write_int_x86_64(src, idx, allocator, output)?;
@@ -246,11 +418,15 @@ impl X86_64AssemblyEmitter {
                     .alloc(dst, output)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
                 output.push_str("    call read_int\n");
-                output.push_str(&format!("    mov r{}, rax\n", pdst));
+                output.push_str(&format!("    mov r{}, rax ; read_int {}\n", pdst, dst));
                 self.free_if_dead(dst, idx, pdst, allocator);
             }
+            IROp::WriteStr => {
+                let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
+                self.emit_write_str_x86_64(src, idx, allocator, output, strings)?;
+            }
             IROp::Unknown => {
-                output.push_str(&format!("// Unhandled IR: {}\n", line));
+                output.push_str(&format!("; Unhandled IR: {}\n", line));
             }
         }
         Ok(())
@@ -280,15 +456,23 @@ impl X86_64AssemblyEmitter {
         }
     }
 
-    fn emit_prologue(output: &mut String) -> io::Result<()> {
+    fn emit_prologue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
+        let stack_size = stack_analyzer.main_stack_vars.len() as u32 * 8;
+        output.push_str(&format!("    sub rsp, {}\n", stack_size.max(16))); // Ensure at least 16 bytes
+        output.push_str("    push r13\n");
+        output.push_str("    push r14\n");
+        output.push_str("    push r15\n");
         Ok(())
     }
 
     fn emit_epilogue(output: &mut String) -> io::Result<()> {
-        output.push_str("    mov rsp, rbp\n");
-        output.push_str("    pop rbp\n");
+        output.push_str("    pop r15\n");   // Restore callee-saved registers
+        output.push_str("    pop r14\n");
+        output.push_str("    pop r13\n");
+        output.push_str("    mov rax, 0\n");
+        output.push_str("    leave\n");
         output.push_str("    ret\n");
         Ok(())
     }
@@ -311,91 +495,127 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_footer_conditional(&self, output: &mut String, needs_write_int: bool, needs_read_int: bool) -> std::io::Result<()> {
+    fn emit_write_str_x86_64(
+        &self,
+        src: &str,
+        _idx: usize,
+        _allocator: &mut dyn RegisterAllocator,
+        output: &mut String,
+        strings: &[String],
+    ) -> io::Result<()> {
+        let str_clean = src.trim_matches(|c| c == ',' || c == '"' || c == '\'');
+        let label = strings.iter().position(|s| s == str_clean).map(|i| format!("string_{}", i)).unwrap_or_else(|| {
+            eprintln!("Warning: String '{}' not found in data section", str_clean);
+            str_clean.to_string()
+        });
+        output.push_str(&format!("    mov rdi, {}\n", label));
+        output.push_str("    call write_str\n");
+        Ok(())
+    }
+    
+    fn emit_footer_conditional(
+        &self,
+        output: &mut String,
+        needs_write_int: bool,
+        needs_read_int: bool,
+        needs_write_str: bool,
+    ) -> io::Result<()> {
         if needs_write_int {
             self.emit_write_int_routine(output)?;
         }
         if needs_read_int {
             self.emit_read_int_routine(output)?;
         }
+        if needs_write_str {
+            self.emit_write_str_routine(output)?;
+        }
         Ok(())
     }
 
-    fn emit_write_int_routine(&self, output: &mut String) -> std::io::Result<()> {
+    fn emit_write_int_routine(&self, output: &mut String) -> io::Result<()> {
+        //output.push_str("section .data\n");
+        //output.push_str("    digitSpace times 20 db 0\n");
+        //output.push_str("    newline db 0xA\n");
+        output.push_str("section .text\n");
         output.push_str("write_int:\n");
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
-        output.push_str("    sub rsp, 40\n"); // Reserve 40 bytes for buffer
-        output.push_str("    mov rsi, rsp\n"); // rsi = buffer
-        output.push_str("    mov rcx, 0\n"); // digit count
-        output.push_str("    mov rax, rdi\n"); // rax = value
-        output.push_str("    mov rbx, 0\n"); // rbx = is_negative
+        output.push_str("    push rax\n");
+        output.push_str("    push rdi\n");
+        output.push_str("    push rsi\n");
+        output.push_str("    push rdx\n");
+        output.push_str("    push rcx\n");
+        output.push_str("    push r8\n");
+        output.push_str("    mov rax, rdi\n");
+        output.push_str("    mov rsi, digitSpace + 19\n");
+        output.push_str("    mov rcx, 10\n");
+        output.push_str("    mov r8, 0\n");
         output.push_str("    cmp rax, 0\n");
-        output.push_str("    jge .write_int_absval\n");
-        output.push_str("    neg rax\n");
-        output.push_str("    mov bl, 1\n"); // mark as negative
-        output.push_str(".write_int_absval:\n");
-        output.push_str("    cmp rax, 0\n");
-        output.push_str("    jne .write_int_loop\n");
+        output.push_str("    jne .check_negative\n");
         output.push_str("    mov byte [rsi], '0'\n");
-        output.push_str("    inc rcx\n");
-        output.push_str("    jmp .write_int_done\n");
-        output.push_str(".write_int_loop:\n");
-        output.push_str("    mov rdx, 0\n");
-        output.push_str("    mov r8, 10\n");
-        output.push_str("    div r8\n"); // rax = rax / 10, rdx = rax % 10
-        output.push_str("    add dl, '0'\n");
-        output.push_str("    mov [rsi + rcx], dl\n");
-        output.push_str("    inc rcx\n");
-        output.push_str("    cmp rax, 0\n");
-        output.push_str("    jne .write_int_loop\n");
-        output.push_str(".write_int_done:\n");
-        output.push_str("    cmp bl, 0\n");
-        output.push_str("    je .write_int_reverse\n");
-        output.push_str("    mov byte [rsi + rcx], '-'\n");
-        output.push_str("    inc rcx\n");
-        output.push_str(".write_int_reverse:\n");
-        output.push_str("    mov rdx, rcx\n"); // rdx = length
-        output.push_str("    lea rdi, [rsi]\n"); // rdi = buffer
-        output.push_str("    mov r8, rcx\n"); // r8 = count
-        output.push_str("    shr rcx, 1\n"); // rcx = count / 2
-        output.push_str("    cmp r8, 1\n");
-        output.push_str("    jbe .write_int_syscall\n");
-        output.push_str("    mov r9, 0\n"); // r9 = i
-        output.push_str(".write_int_revloop:\n");
-        output.push_str("    mov al, [rsi + r9]\n");
-        output.push_str("    mov bl, [rsi + r8 - 1 - r9]\n");
-        output.push_str("    mov [rsi + r9], bl\n");
-        output.push_str("    mov [rsi + r8 - 1 - r9], al\n");
-        output.push_str("    inc r9\n");
-        output.push_str("    cmp r9, rcx\n");
-        output.push_str("    jb .write_int_revloop\n");
-        output.push_str(".write_int_syscall:\n");
-        output.push_str("    mov rax, 1\n"); // syscall: write
-        output.push_str("    mov rdi, 1\n"); // fd = stdout
-        output.push_str("    mov rsi, rsi\n"); // buf
-        output.push_str("    mov rdx, r8\n"); // count
+        output.push_str("    mov rdx, 1\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
         output.push_str("    syscall\n");
-        output.push_str("    add rsp, 40\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
+        output.push_str("    mov rsi, newline\n");
+        output.push_str("    mov rdx, 1\n");
+        output.push_str("    syscall\n");
+        output.push_str("    jmp .done\n");
+        output.push_str(".check_negative:\n");
+        output.push_str("    jge .convert_loop\n");
+        output.push_str("    neg rax\n");
+        output.push_str("    mov r8, 1\n");
+        output.push_str(".convert_loop:\n");
+        output.push_str("    xor rdx, rdx\n");
+        output.push_str("    div rcx\n");
+        output.push_str("    add dl, '0'\n");
+        output.push_str("    dec rsi\n");
+        output.push_str("    mov [rsi], dl\n");
+        output.push_str("    test rax, rax\n");
+        output.push_str("    jnz .convert_loop\n");
+        output.push_str("    cmp r8, 0\n");
+        output.push_str("    je .print\n");
+        output.push_str("    dec rsi\n");
+        output.push_str("    mov byte [rsi], '-'\n");
+        output.push_str(".print:\n");
+        output.push_str("    mov rdx, digitSpace + 20\n");
+        output.push_str("    sub rdx, rsi\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
+        output.push_str("    syscall\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
+        output.push_str("    mov rsi, newline\n");
+        output.push_str("    mov rdx, 1\n");
+        output.push_str("    syscall\n");
+        output.push_str(".done:\n");
+        output.push_str("    pop r8\n");
+        output.push_str("    pop rcx\n");
+        output.push_str("    pop rdx\n");
+        output.push_str("    pop rsi\n");
+        output.push_str("    pop rdi\n");
+        output.push_str("    pop rax\n");
         output.push_str("    pop rbp\n");
         output.push_str("    ret\n");
         Ok(())
     }
 
-    fn emit_read_int_routine(&self, output: &mut String) -> std::io::Result<()> {
+    fn emit_read_int_routine(&self, output: &mut String) -> io::Result<()> {
         output.push_str("read_int:\n");
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
-        output.push_str("    sub rsp, 64\n"); // Reserve 64 bytes for buffer
-        output.push_str("    mov rsi, rsp\n"); // rsi = buffer
-        output.push_str("    mov rdi, 0\n"); // fd = stdin
-        output.push_str("    mov rdx, 64\n"); // count = 64
-        output.push_str("    mov rax, 0\n"); // syscall: read
+        output.push_str("    sub rsp, 64\n");
+        output.push_str("    mov rsi, rsp\n");
+        output.push_str("    mov rdi, 0\n");
+        output.push_str("    mov rdx, 64\n");
+        output.push_str("    mov rax, 0\n");
         output.push_str("    syscall\n");
-        output.push_str("    mov rcx, rsp\n"); // rcx = buffer
-        output.push_str("    mov rbx, 0\n"); // rbx = result
-        output.push_str("    mov rdx, 0\n"); // rdx = sign (0=+, 1=-)
-        output.push_str("    mov r8, 0\n"); // r8 = index
+        output.push_str("    mov rcx, rsp\n");
+        output.push_str("    mov rbx, 0\n");
+        output.push_str("    mov rdx, 0\n");
+        output.push_str("    mov r8, 0\n");
         output.push_str(".read_int_skip_ws:\n");
         output.push_str("    mov al, [rcx + r8]\n");
         output.push_str("    cmp al, ' '\n");
@@ -434,28 +654,85 @@ impl X86_64AssemblyEmitter {
         output.push_str("    je .read_int_store\n");
         output.push_str("    neg rbx\n");
         output.push_str(".read_int_store:\n");
-        output.push_str("    mov rax, rbx\n"); // result in rax
+        output.push_str("    mov rax, rbx\n");
         output.push_str("    add rsp, 64\n");
         output.push_str("    pop rbp\n");
         output.push_str("    ret\n");
         Ok(())
     }
-
+    fn emit_write_str_routine(&self, output: &mut String) -> io::Result<()> {
+        output.push_str("section .text\n");
+        output.push_str("write_str:\n");
+        output.push_str("    push rbp\n");
+        output.push_str("    mov rbp, rsp\n");
+        output.push_str("    push rax\n");
+        output.push_str("    push rdi\n");
+        output.push_str("    push rsi\n");
+        output.push_str("    push rdx\n");
+        output.push_str("    push rcx\n");
+        output.push_str("    mov rsi, rdi\n");
+        output.push_str("    mov rcx, 0\n");
+        output.push_str(".count_loop:\n");
+        output.push_str("    cmp byte [rsi + rcx], 0\n");
+        output.push_str("    je .print\n");
+        output.push_str("    inc rcx\n");
+        output.push_str("    jmp .count_loop\n");
+        output.push_str(".print:\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
+        output.push_str("    mov rdx, rcx\n");
+        output.push_str("    syscall\n");
+        output.push_str("    mov rax, 1\n");
+        output.push_str("    mov rdi, 1\n");
+        output.push_str("    mov rsi, newline\n");
+        output.push_str("    mov rdx, 1\n");
+        output.push_str("    syscall\n");
+        output.push_str(".done:\n");
+        output.push_str("    pop rcx\n");
+        output.push_str("    pop rdx\n");
+        output.push_str("    pop rsi\n");
+        output.push_str("    pop rdi\n");
+        output.push_str("    pop rax\n");
+        output.push_str("    pop rbp\n");
+        output.push_str("    ret\n");
+        Ok(())
+    }
+    
     fn emit_li(
         &self,
         rest: &[&str],
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
+        constants: &HashMap<String, String>,
     ) -> io::Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        output.push_str(&format!("    mov r{}, {}\n", pdst, imm));
+        // Optimization: Inline constant values
+        let value = constants.get(imm).map(|v| v.as_str()).unwrap_or(imm);
+        output.push_str(&format!("    mov r{}, {}\n", pdst, value));
         self.free_if_dead(dst, idx, pdst, allocator);
         Ok(())
+    }
+
+    fn strip_brackets(s: &str) -> &str {
+        s.trim().trim_start_matches('[').trim_end_matches(']')
+    }
+
+    fn format_global_addr(var: &str) -> String {
+        format!("[{}]", var)
+    }
+
+    fn format_stack_addr(addr: &str) -> String {
+        if addr.starts_with("bp-") || addr.starts_with("rbp-") {
+            let offset = addr.split('-').nth(1).unwrap_or("0").parse::<u32>().unwrap_or(0);
+            format!("[rbp - {}]", offset)
+        } else {
+            format!("[{}]", addr)
+        }
     }
 
     fn emit_ld(
@@ -464,14 +741,22 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
+        constants: &HashMap<String, String>,
     ) -> io::Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
-        let src = rest.get(1).unwrap_or(&"");
-        let src = src.trim().replace(['[', ']', ','], "");
+        let src_cleaned = rest.get(1).unwrap_or(&"").trim().replace([','], "");
+        let src = Self::strip_brackets(&src_cleaned);
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        output.push_str(&format!("    mov r{}, qword [{}]\n", pdst, src));
+        let src_addr = if constants.contains_key(src) {
+            format!("[{}]", src) // Load constant from .data section
+        } else if src.starts_with("bp-") || src.starts_with("rbp-") {
+            Self::format_stack_addr(src)
+        } else {
+            Self::format_global_addr(src)
+        };
+        output.push_str(&format!("    mov r{}, {}\n", pdst, src_addr));
         self.free_if_dead(dst, idx, pdst, allocator);
         Ok(())
     }
@@ -482,14 +767,38 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
+        constants: &HashMap<String, String>,
     ) -> io::Result<()> {
-        let dst = rest.get(0).unwrap_or(&"");
-        let dst = dst.trim().replace(['[', ']', ','], "");
+        let dst_cleaned = rest.get(0).unwrap_or(&"").trim().replace([','], "");
+        let dst = Self::strip_brackets(&dst_cleaned);
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
             .ensure(src, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        output.push_str(&format!("    mov qword [{}], r{}\n", dst, psrc));
+        if constants.contains_key(dst) {
+            return Err(io::Error::new(io::ErrorKind::Other, format!("Cannot store to constant: {}", dst)));
+        }
+        let dst_addr = if dst.starts_with("bp-") || dst.starts_with("rbp-") {
+            Self::format_stack_addr(dst)
+        } else {
+            Self::format_global_addr(dst)
+        };
+        let src_is_mem = src.starts_with("bp-") || src.starts_with("rbp-") || (src.starts_with('[') && src.ends_with(']'));
+        if src_is_mem {
+            let src_clean = Self::strip_brackets(src);
+            if constants.contains_key(src_clean) {
+                return Err(io::Error::new(io::ErrorKind::Other, format!("Cannot load from constant as memory: {}", src_clean)));
+            }
+            let src_addr = if src_clean.starts_with("bp-") || src_clean.starts_with("rbp-") {
+                Self::format_stack_addr(src_clean)
+            } else {
+                Self::format_global_addr(src_clean)
+            };
+            output.push_str(&format!("    mov rax, {}\n", src_addr));
+            output.push_str(&format!("    mov {}, rax\n", dst_addr));
+        } else {
+            output.push_str(&format!("    mov {}, r{}\n", dst_addr, psrc));
+        }
         self.free_if_dead(src, idx, psrc, allocator);
         Ok(())
     }
@@ -514,41 +823,38 @@ impl X86_64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
+    
         let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
         let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
         let pdst_name = RegisterName::from_usize(pdst).unwrap();
-
+    
         let op_str = match op {
             "add" => "add",
             "sub" => "sub",
             "mul" => "imul",
             "idiv" => "idiv",
+            "mod" => "mod",
             _ => {
-                output.push_str(&format!("    // Unhandled binop: {}\n", op));
                 return Ok(());
             }
         };
-
-        if op == "idiv" {
-            // For idiv, dividend in rax, divisor in reg, result in rax
+    
+        if op == "idiv" || op == "mod" {
             output.push_str(&format!("    mov rax, {}\n", psrc1_name));
             output.push_str("    cqo\n");
             output.push_str(&format!("    idiv {}\n", psrc2_name));
-            output.push_str(&format!("    mov {}, rax\n", pdst_name));
+            output.push_str(&format!("    mov {}, {}\n", pdst_name, if op == "mod" { "rdx" } else { "rax" }));
         } else {
-            // Standard 2-operand instructions
-            if pdst != psrc1 {
-                output.push_str(&format!("    mov {}, {}\n", pdst_name, psrc1_name));
-            }
+            output.push_str(&format!("    mov {}, {}\n", pdst_name, psrc1_name));
             output.push_str(&format!("    {} {}, {}\n", op_str, pdst_name, psrc2_name));
         }
-
+    
         self.free_if_dead(src1, idx, psrc1, allocator);
         self.free_if_dead(src2, idx, psrc2, allocator);
         self.free_if_dead(dst, idx, pdst, allocator);
         Ok(())
     }
+    
 
     fn emit_relational(
         &self,
@@ -583,16 +889,13 @@ impl X86_64AssemblyEmitter {
             "cmp_eq" => "sete",
             "cmp_ne" => "setne",
             _ => {
-                output.push_str(&format!("    // Unhandled relational op: {}\n", op));
+                output.push_str(&format!("; Unhandled relational op: {}\n", op));
                 return Ok(());
             }
         };
 
-        // cmp src1, src2
         output.push_str(&format!("    cmp {}, {}\n", psrc1_name, psrc2_name));
-        // set* al
         output.push_str(&format!("    {} al\n", set_instr));
-        // movzx dst, al
         output.push_str(&format!("    movzx {}, al\n", pdst_name));
 
         self.free_if_dead(src1, idx, psrc1, allocator);
@@ -666,8 +969,8 @@ impl X86_64AssemblyEmitter {
     }
 
     fn emit_exit(&self, output: &mut String) -> io::Result<()> {
-        output.push_str("    mov rax, 0\n");
-        output.push_str("    ret\n");
+        output.push_str("    mov rax, 0 ; exit 0\n");
+        // Do NOT emit leave/ret here; epilogue is handled by section header
         Ok(())
     }
 }

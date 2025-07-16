@@ -23,6 +23,7 @@ pub enum IROp {
     Call,
     Exit,
     WriteInt,
+    WriteStr,
     ReadInt,
     Unknown,
 }
@@ -52,6 +53,7 @@ impl IROp {
             "call" => IROp::Call,
             "exit" => IROp::Exit,
             "write_int" => IROp::WriteInt,
+            "write_str" => IROp::WriteStr,
             "read_int" => IROp::ReadInt,
             _ => IROp::Unknown,
         }

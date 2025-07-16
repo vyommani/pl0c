@@ -745,6 +745,7 @@ impl Arm64AssemblyEmitter {
                 let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
                 self.emit_read_int_arm64(dst, idx, allocator, target_output)?;
             }
+            IROp::WriteStr => {},
             IROp::Unknown => write_line(target_output, format_args!("// Unhandled IR: {}\n", line))?,
         }
         Ok(())

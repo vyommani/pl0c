@@ -96,6 +96,11 @@ impl SymbolTable {
         None
     }
 
+    // Returns an iterator over all symbols in all scopes (innermost to outermost).
+    pub fn all_symbols(&self) -> impl Iterator<Item = &Symbol> {
+        self.scopes.iter().rev().flat_map(|scope| scope.values())
+    }
+
     // Type check a symbol by name and expected type. Returns Ok(()) if found, Err otherwise.
     pub fn type_check(
         &self,
