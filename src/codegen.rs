@@ -43,7 +43,7 @@ impl IRGenerator {
             main_emitted: false,
             in_procedure: false,
             current_scope_level: 0,
-            local_var_offset: 0,
+            local_var_offset: 8,
         }
     }
 
@@ -375,7 +375,7 @@ impl IRGenerator {
             self.emit_label(name)?;
 
             self.current_scope_level += 1;
-            self.local_var_offset = 0;
+            self.local_var_offset = 8;
 
             // Calculate stack size
             let mut stack_slots = 0;
@@ -704,7 +704,7 @@ impl ASTVisitor for IRGenerator {
 
                 // Enter procedure scope
                 self.current_scope_level += 1;
-                self.local_var_offset = 0; // Reset local variable offset for this procedure
+                self.local_var_offset = 8; // Reset local variable offset for this procedure
 
                 // Calculate stack size for this procedure
                 let mut stack_slots = 0;
