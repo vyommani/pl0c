@@ -216,6 +216,7 @@ impl IRGenerator {
             "sub" => emitter.emit_sub(dest, left, right),
             "mul" => emitter.emit_mul(dest, left, right),
             "div" => emitter.emit_div(dest, left, right),
+            "mod" => emitter.emit_mod(dest, left, right),
             _ => Err(RegisterError::InvalidInstruction(format!("Unknown binary op: {}", op))),
         }
     }
@@ -335,6 +336,7 @@ impl IRGenerator {
             "Minus" => "sub",
             "Multiply" => "mul",
             "Divide" => "div",
+            "Modulo" => "mod",
             _ => return Err(RegisterError::InvalidInstruction(format!("Unknown operator: {}", operator))),
         };
         self.emit_binary_op(op, &result_vreg, &left_result, &right_result)?;

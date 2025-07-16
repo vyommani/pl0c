@@ -729,6 +729,7 @@ impl Arm64AssemblyEmitter {
                 self.emit_binop(op_str, rest, idx, allocator, target_output)?
             }
             IROp::Div => self.emit_binop("sdiv", rest, idx, allocator, target_output)?,
+            IROp::Mod => self.emit_mod(rest, idx, allocator, target_output)?,
             IROp::CmpGt | IROp::CmpLt | IROp::CmpLe | IROp::CmpGe | IROp::CmpEq | IROp::CmpNe => {
                 self.emit_relational(op_str, rest, idx, allocator, target_output)?
             }
@@ -745,6 +746,47 @@ impl Arm64AssemblyEmitter {
                 self.emit_read_int_arm64(dst, idx, allocator, target_output)?;
             }
             IROp::Unknown => write_line(target_output, format_args!("// Unhandled IR: {}\n", line))?,
+        }
+        Ok(())
+    }
+
+    fn emit_mod(
+        &self,
+        rest: &[&str],
+        idx: usize,
+        allocator: &mut dyn RegisterAllocator,
+        output: &mut String,
+    ) -> Result<(), io::Error> {
+        let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
+        let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
+        let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
+
+        let psrc1 = allocator.ensure(src1, output)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+        let psrc2 = allocator.ensure(src2, output)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+        let pdst = allocator.alloc(dst, output)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+
+        // Use a temp register for the quotient (let's use x11, but ensure it's not used for vregs)
+        let temp = 11usize;
+        if psrc1 == temp || psrc2 == temp || pdst == temp {
+            return Err(io::Error::new(io::ErrorKind::Other, "x11 cannot be used for computation"));
+        }
+
+        // sdiv x11, x<src1>, x<src2>
+        write_line(output, format_args!("    sdiv x{}, x{}, x{}\n", temp, psrc1, psrc2))?;
+        // msub x<dst>, x11, x<src2>, x<src1>  ; x<dst> = x<src1> - (x11 * x<src2>)
+        write_line(output, format_args!("    msub x{}, x{}, x{}, x{}\n", pdst, temp, psrc2, psrc1))?;
+
+        if self.is_dead_after(src1, idx, allocator) {
+            allocator.free(psrc1);
+        }
+        if self.is_dead_after(src2, idx, allocator) {
+            allocator.free(psrc2);
+        }
+        if self.is_dead_after(dst, idx, allocator) {
+            allocator.free(pdst);
         }
         Ok(())
     }

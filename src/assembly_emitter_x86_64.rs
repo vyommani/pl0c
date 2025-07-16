@@ -215,6 +215,9 @@ impl X86_64AssemblyEmitter {
             IROp::Div => {
                 self.emit_binop("idiv", rest, idx, allocator, output)?;
             }
+            IROp::Mod => {
+                output.push_str("    // TODO: Modulo operation not implemented for x86_64\n");
+            }
             IROp::CmpGt | IROp::CmpLt | IROp::CmpLe | IROp::CmpGe | IROp::CmpEq | IROp::CmpNe => {
                 self.emit_relational(op_str, rest, idx, allocator, output)?;
             }

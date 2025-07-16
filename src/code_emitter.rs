@@ -15,6 +15,7 @@ pub trait CodeEmitter {
     fn emit_sub(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
     fn emit_mul(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
     fn emit_div(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
+    fn emit_mod(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
     fn emit_cmp_gt(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
     fn emit_cmp_lt(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
     fn emit_cmp_eq(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError>;
@@ -98,6 +99,10 @@ impl<'a> CodeEmitter for StringCodeEmitter<'a> {
 
     fn emit_div(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError> {
         self.emit(&format!("div {}, {}, {}", dest, src1, src2))
+    }
+
+    fn emit_mod(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError> {
+        self.emit(&format!("mod {}, {}, {}", dest, src1, src2))
     }
 
     fn emit_cmp_gt(&mut self, dest: &str, src1: &str, src2: &str) -> Result<(), RegisterError> {
