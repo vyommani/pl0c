@@ -109,6 +109,7 @@ pub struct Arm64RegisterAllocator {
     free_spill_slots: BinaryHeap<Reverse<i32>>, // Track freed spill slots
     live_ranges: HashMap<usize, (i32, i32)>, // v_reg ID -> (start, end) instruction indices
     current_instruction: i32, // Track current instruction index
+    pub used_callee_saved: std::collections::HashSet<usize>, // Track used callee-saved registers
 }
 
 impl Arm64RegisterAllocator {
@@ -119,6 +120,7 @@ impl Arm64RegisterAllocator {
         let vreg_map = HashMap::with_capacity(16);
         let live_ranges = HashMap::with_capacity(16);
         let free_spill_slots = BinaryHeap::new();
+        let used_callee_saved = std::collections::HashSet::new();
 
         for i in 0..NUM_REGS {
             if let Some(name) = RegisterName::from_index(i) {
@@ -129,6 +131,7 @@ impl Arm64RegisterAllocator {
                     next_uses: vec![],
                     address: 0,
                     spill_offset: None,
+                    live_across_call: false,
                 });
                 if ALLOCATABLE_INDICES.contains(&i) {
                     if i <= 15 {
@@ -149,6 +152,7 @@ impl Arm64RegisterAllocator {
             free_spill_slots,
             live_ranges,
             current_instruction: 0,
+            used_callee_saved,
         }
     }
 
@@ -206,10 +210,10 @@ impl Arm64RegisterAllocator {
     }
 
     pub fn alloc(
-    &mut self,
-    v_reg: &Register<RegisterName>,
-    vreg_name: &str,
-    emitter: &mut dyn CodeEmitter,
+         &mut self,
+         v_reg: &Register<RegisterName>,
+         vreg_name: &str,
+         emitter: &mut dyn CodeEmitter,
     ) -> Result<Register<RegisterName>, RegisterError> {
         // Update next_uses based on current instruction
         let mut next_uses = v_reg.next_uses.clone();
@@ -241,20 +245,39 @@ impl Arm64RegisterAllocator {
             }
         }
 
-        // Caller-saved
-        if let Some(Reverse(p_reg)) = self.free_caller_saved.pop() {
-            if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                reg.v_reg = v_reg.v_reg;
-                reg.next_uses = next_uses.clone();
-                reg.address = v_reg.address;
-                reg.spill_offset = None;
-                self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
-                return Ok(reg.clone());
+        // Use only callee-saved for vregs live across calls
+        if v_reg.live_across_call {
+            if let Some(Reverse(p_reg)) = self.free_callee_saved.pop() {
+                if let Some(reg) = self.reg_map[p_reg].as_mut() {
+                    reg.v_reg = v_reg.v_reg;
+                    reg.next_uses = next_uses.clone();
+                    reg.address = v_reg.address;
+                    reg.spill_offset = None;
+                    self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                    self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                    if p_reg >= 19 && p_reg <= 28 {
+                        self.used_callee_saved.insert(p_reg); // Track usage
+                        emitter.emit(&format!("stp {}, x29, [sp, -16]!", reg.name))?;
+                    }
+                    return Ok(reg.clone());
+                }
+            }
+        } else {
+            // Otherwise, use caller-saved
+            if let Some(Reverse(p_reg)) = self.free_caller_saved.pop() {
+                if let Some(reg) = self.reg_map[p_reg].as_mut() {
+                    reg.v_reg = v_reg.v_reg;
+                    reg.next_uses = next_uses.clone();
+                    reg.address = v_reg.address;
+                    reg.spill_offset = None;
+                    self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                    self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                    return Ok(reg.clone());
+                }
             }
         }
 
-        // Callee-saved
+        // Callee-saved fallback (if not live_across_call but caller-saved exhausted)
         if let Some(Reverse(p_reg)) = self.free_callee_saved.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
@@ -264,6 +287,7 @@ impl Arm64RegisterAllocator {
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
                 self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 if p_reg >= 19 && p_reg <= 28 {
+                    self.used_callee_saved.insert(p_reg); // Track usage
                     emitter.emit(&format!("stp {}, x29, [sp, -16]!", reg.name))?;
                 }
                 return Ok(reg.clone());
@@ -306,6 +330,11 @@ impl Arm64RegisterAllocator {
         } else {
             Err(RegisterError::NoRegistersAvailable)
         }
+    }
+
+    // Add a method to get the used callee-saved registers
+    pub fn get_used_callee_saved(&self) -> &std::collections::HashSet<usize> {
+        &self.used_callee_saved
     }
 }
 

@@ -46,6 +46,7 @@ pub struct Register<RN> {
     pub next_uses: Vec<i32>,
     pub address: i64,
     pub spill_offset: Option<i32>, // Spill slot offset (None if not spilled)
+    pub live_across_call: bool, // true if vreg is live across a call
 }
 
 impl<RN: Clone + Eq> Register<RN> {
@@ -57,6 +58,7 @@ impl<RN: Clone + Eq> Register<RN> {
             next_uses,
             address,
             spill_offset: None,
+            live_across_call: false,
         }
     }
 
