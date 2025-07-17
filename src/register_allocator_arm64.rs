@@ -257,7 +257,6 @@ impl Arm64RegisterAllocator {
                     self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                     if p_reg >= 19 && p_reg <= 28 {
                         self.used_callee_saved.insert(p_reg); // Track usage
-                        emitter.emit(&format!("stp {}, x29, [sp, -16]!", reg.name))?;
                     }
                     return Ok(reg.clone());
                 }
@@ -288,7 +287,6 @@ impl Arm64RegisterAllocator {
                 self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
                 if p_reg >= 19 && p_reg <= 28 {
                     self.used_callee_saved.insert(p_reg); // Track usage
-                    emitter.emit(&format!("stp {}, x29, [sp, -16]!", reg.name))?;
                 }
                 return Ok(reg.clone());
             }
