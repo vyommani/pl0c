@@ -34,9 +34,9 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         Self::emit_data_section(&mut data_output, &variables, &constants)?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
-        self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output)?;
+        let main_stack_size = self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output)?;
         // Prepend .global main and prologue to main_output
-        let new_main_output = Self::emit_main_section(&main_output, allocator)?;
+        let new_main_output = Self::emit_main_section(&main_output, allocator, main_stack_size)?;
         // Assemble final output
         let mut footer = String::new();
         self.emit_footer(&mut footer, needs_write_int, needs_read_int)?;
@@ -143,62 +143,99 @@ impl Arm64AssemblyEmitter {
 
     // Helper to process IR lines
     #[allow(clippy::too_many_arguments)]
-    fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String, main_output: &mut String) -> std::io::Result<()> {
+    fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String, main_output: &mut String) -> std::io::Result<usize> {
+        let mut main_stack_size: usize = 0;
+        let mut main_proc_enter_idx: Option<usize> = None;
+        let mut proc_stack_sizes: Vec<usize> = Vec::new();
         let mut in_proc = false;
-        let mut current_proc = None;
-        let mut proc_stack = Vec::new();
-        for (idx, line) in ir.iter().enumerate() {
+        let mut i = 0;
+        while i < ir.len() {
             if let Some(alloc) = allocator
                 .as_any_mut()
                 .downcast_mut::<crate::register_allocator_arm64::Arm64RegisterAllocator>() {
-                alloc.set_instruction_index(idx as i32);
+                alloc.set_instruction_index(i as i32);
             }
-            let line = line.trim();
+            let line = ir[i].trim();
             if line.is_empty()
                 || line.starts_with('#')
                 || line.starts_with("var ")
                 || line.starts_with("const ")
             {
+                i += 1;
                 continue;
             }
             if line.ends_with(':') {
-                // Avoid duplicate main label
+                // Look ahead for proc_enter
+                let mut j = i + 1;
+                let mut is_proc = false;
+                while j < ir.len() {
+                    let next_line = ir[j].trim();
+                    if next_line.is_empty() || next_line.starts_with('#') {
+                        j += 1;
+                        continue;
+                    }
+                    if next_line.starts_with("proc_enter") {
+                        is_proc = true;
+                    }
+                    break;
+                }
                 if line == "main:" {
+                    in_proc = false;
+                    i += 1;
                     continue;
+                } else if is_proc {
+                    in_proc = true;
                 }
                 if in_proc {
                     write_line(proc_output, format_args!("{}\n", line))?;
                 } else {
                     write_line(main_output, format_args!("{}\n", line))?;
                 }
+                i += 1;
                 continue;
             }
             let mut parts = line.split_whitespace();
             let op_str = parts.next().unwrap_or("");
             let rest: Vec<&str> = parts.collect();
-            
             let op = IROp::from_str(op_str);
+            if !in_proc && op == IROp::ProcEnter {
+                // This is a proc_enter for main
+                main_proc_enter_idx = Some(i);
+                main_stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+                i += 1;
+                continue;
+            }
             if in_proc {
-                self.emit_ir_instruction_arm64(op, op_str, &rest, idx, allocator,
-                    proc_output, &mut in_proc, &mut current_proc, &mut proc_stack, line,
+                self.emit_ir_instruction_arm64_with_stack(op, op_str, &rest, i, allocator,
+                    proc_output, &mut in_proc, &mut None, &mut Vec::new(), &mut proc_stack_sizes, line,
                 )?;
             } else {
-                self.emit_ir_instruction_arm64(op, op_str, &rest, idx, allocator,
-                    main_output, &mut in_proc, &mut current_proc, &mut proc_stack, line,
+                self.emit_ir_instruction_arm64_with_stack(op, op_str, &rest, i, allocator,
+                    main_output, &mut in_proc, &mut None, &mut Vec::new(), &mut proc_stack_sizes, line,
                 )?;
             }
+            i += 1;
         }
-        Ok(())
+        Ok(main_stack_size)
     }
 
     // Helper to emit main section
-    fn emit_main_section(main_output: &str, allocator: &mut dyn RegisterAllocator) -> std::io::Result<String> {
+    fn emit_main_section(main_output: &str, allocator: &mut dyn RegisterAllocator, main_stack_size: usize) -> std::io::Result<String> {
         let mut new_main_output = String::new();
         write_line(&mut new_main_output, format_args!(".global main\n"))?;
         write_line(&mut new_main_output, format_args!("main:\n"))?;
         Self::emit_prologue(&mut new_main_output, allocator)?;
+        if main_stack_size > 0 {
+            write_line(&mut new_main_output, format_args!("    sub sp, sp, #{}\n", main_stack_size))?;
+        }
         new_main_output.push_str(main_output);
-        if !main_output.is_empty() {
+        // Only emit stack deallocation and epilogue if main_output does NOT already end with an exit syscall
+        let trimmed = main_output.trim_end();
+        let ends_with_exit = trimmed.ends_with("svc #0") || trimmed.ends_with("svc #0\n");
+        if !main_output.is_empty() && !ends_with_exit {
+            if main_stack_size > 0 {
+                write_line(&mut new_main_output, format_args!("    add sp, sp, #{}\n", main_stack_size))?;
+            }
             Self::emit_epilogue(&mut new_main_output, allocator)?;
         }
         Ok(new_main_output)
@@ -476,7 +513,43 @@ impl Arm64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
-        write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm))?;
+        // Try to parse as u64 (for large immediates)
+        if let Ok(imm_val) = imm.parse::<u64>() {
+            if imm_val <= 0xFFFF {
+                write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm_val))?;
+            } else {
+                write_line(output, format_args!("    movz x{}, #{}\n", pdst, imm_val & 0xFFFF))?;
+                if (imm_val >> 16) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", pdst, (imm_val >> 16) & 0xFFFF))?;
+                }
+                if (imm_val >> 32) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", pdst, (imm_val >> 32) & 0xFFFF))?;
+                }
+                if (imm_val >> 48) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", pdst, (imm_val >> 48) & 0xFFFF))?;
+                }
+            }
+        } else if let Ok(imm_val) = imm.parse::<i64>() {
+            // For negative immediates, use mov/mvn or movz/movk with sign extension
+            if imm_val >= 0 && imm_val <= 0xFFFF {
+                write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm_val))?;
+            } else {
+                // Fallback: use movz/movk for the unsigned representation
+                let imm_val = imm_val as u64;
+                write_line(output, format_args!("    movz x{}, #{}\n", pdst, imm_val & 0xFFFF))?;
+                if (imm_val >> 16) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", pdst, (imm_val >> 16) & 0xFFFF))?;
+                }
+                if (imm_val >> 32) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", pdst, (imm_val >> 32) & 0xFFFF))?;
+                }
+                if (imm_val >> 48) & 0xFFFF != 0 {
+                    write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", pdst, (imm_val >> 48) & 0xFFFF))?;
+                }
+            }
+        } else {
+            write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm))?;
+        }
         if self.is_dead_after(dst, idx, allocator) {
             allocator.free(pdst);
         }
@@ -556,78 +629,86 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
-        // Prefer reusing src1's register for dst if they are the same virtual register
-        let pdst = if dst == src1 {
-            allocator.ensure(src1, output)
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?
+        // Handle immediate-immediate case
+        if let (Ok(imm1), Ok(imm2)) = (src1.parse::<i64>(), src2.parse::<i64>()) {
+            let result = match op {
+                "add" => imm1.wrapping_add(imm2),
+                "sub" => imm1.wrapping_sub(imm2),
+                "mul" => imm1.wrapping_mul(imm2),
+                "sdiv" => if imm2 != 0 { imm1.wrapping_div(imm2) } else { return Err(io::Error::new(io::ErrorKind::Other, "Division by zero")) },
+                _ => return Err(io::Error::new(io::ErrorKind::Other, format!("Operation {} not supported", op))),
+            };
+            let pdst = allocator.alloc(dst, output)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            if pdst == 12 {
+                return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
+            }
+            write_line(output, format_args!("    mov x{}, #{}\n", pdst, result))?;
+            if self.is_dead_after(dst, idx, allocator) {
+                allocator.free(pdst);
+            }
+            return Ok(());
+        }
+    
+        let psrc1 = allocator.ensure(src1, output)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        if psrc1 == 12 {
+            return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
+        }
+    
+        // Reuse psrc1 for dst if temporary and dead
+        let pdst = if dst == src1 || (self.is_dead_after(dst, idx, allocator) && !allocator.get_vreg(dst).map_or(false, |r| r.downcast_ref::<Register<RegisterName>>().map_or(false, |reg| reg.live_across_call))) {
+            psrc1
         } else {
             allocator.alloc(dst, output)
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
         };
-        let psrc1 = allocator.ensure(src1, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
-        // Never use x12 for computation
-        if pdst == 12 || psrc1 == 12 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "x12 cannot be used for computation",
-            ));
+        if pdst == 12 {
+            return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
         }
+    
         if let Ok(imm) = src2.parse::<i64>() {
-            // Handle immediate operand
             match op {
                 "add" | "sub" => {
                     if imm >= -512 && imm <= 511 {
                         write_line(output, format_args!("    {} x{}, x{}, #{}\n", op, pdst, psrc1, imm))?;
                     } else {
-                        let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 }; // Use x1 or x2
+                        let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
                         if temp_reg == 12 {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "x12 cannot be used for computation",
-                            ));
+                            return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
                         }
                         write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
                         write_line(output, format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg))?;
                     }
                 }
                 "sdiv" | "mul" => {
-                    let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 }; // Use x1 or x2
+                    let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
                     if temp_reg == 12 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "x12 cannot be used for computation",
-                        ));
+                        return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
                     }
                     write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
                     write_line(output, format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg))?;
                 }
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Operation {} with immediate not supported", op),
-                    ));
+                    return Err(io::Error::new(io::ErrorKind::Other, format!("Operation {} with immediate not supported", op)));
                 }
             }
         } else {
-            // Handle register operand
             let psrc2 = allocator.ensure(src2, output)
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             if psrc2 == 12 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "x12 cannot be used for computation",
-                ));
+                return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
             }
             write_line(output, format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, psrc2))?;
             if self.is_dead_after(src2, idx, allocator) {
                 allocator.free(psrc2);
             }
         }
+    
         if self.is_dead_after(src1, idx, allocator) && dst != src1 {
             allocator.free(psrc1);
         }
-        if self.is_dead_after(dst, idx, allocator) {
+        if self.is_dead_after(dst, idx, allocator) && pdst != psrc1 {
             allocator.free(pdst);
         }
         Ok(())
@@ -824,6 +905,48 @@ impl Arm64AssemblyEmitter {
             }
             IROp::WriteStr => {},
             IROp::Unknown => write_line(target_output, format_args!("// Unhandled IR: {}\n", line))?,
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_ir_instruction_arm64_with_stack(
+        &self,
+        op: IROp,
+        op_str: &str,
+        rest: &[&str],
+        idx: usize,
+        allocator: &mut dyn RegisterAllocator,
+        target_output: &mut String,
+        in_proc: &mut bool,
+        current_proc: &mut Option<String>,
+        proc_stack: &mut Vec<String>,
+        proc_stack_sizes: &mut Vec<usize>,
+        line: &str,
+    ) -> Result<(), io::Error> {
+        match op {
+            IROp::ProcEnter => {
+                *in_proc = true;
+                let stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+                proc_stack_sizes.push(stack_size);
+                Arm64AssemblyEmitter::emit_prologue(target_output, allocator)?;
+                if stack_size > 0 {
+                    write_line(target_output, format_args!("    sub sp, sp, #{}\n", stack_size))?;
+                }
+            }
+            IROp::ProcExit => {
+                let stack_size = proc_stack_sizes.pop().unwrap_or(0);
+                if stack_size > 0 {
+                    write_line(target_output, format_args!("    add sp, sp, #{}\n", stack_size))?;
+                }
+                Arm64AssemblyEmitter::emit_epilogue(target_output, allocator)?;
+                proc_stack.pop();
+                if proc_stack.is_empty() {
+                    *in_proc = false;
+                    *current_proc = None;
+                }
+            }
+            _ => self.emit_ir_instruction_arm64(op, op_str, rest, idx, allocator, target_output, in_proc, current_proc, proc_stack, line)?,
         }
         Ok(())
     }

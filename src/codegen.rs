@@ -666,8 +666,8 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
         for var_name in &expr.var_decl {
-            if self.in_procedure || !self.main_emitted {
-                // Local variable in procedure or main - use stack offset
+            if self.in_procedure {
+                // Local variable in procedure - use stack offset
                 let offset = self.local_var_offset;
                 self.local_var_offset += 8; // 8 bytes per variable
                 self.update_symbol_location(
