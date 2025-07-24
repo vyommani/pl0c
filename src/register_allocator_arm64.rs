@@ -65,7 +65,7 @@ impl RegisterName {
 }
 
 const NUM_REGS: usize = 32; // X0-X30, SP
-const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
+const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
 pub struct Arm64RegisterAllocator {
     free_caller_saved: VecDeque<usize>, // X0-X15 (excluding X12)
@@ -214,36 +214,17 @@ impl Arm64RegisterAllocator {
             }
         }
 
-        // Use only callee-saved for vregs live across calls
-        if v_reg.live_across_call {
-            if !self.free_callee_saved.is_empty() {
-                let p_reg = self.free_callee_saved.pop_front().unwrap();
-                if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                    reg.v_reg = v_reg.v_reg;
-                    reg.next_uses = next_uses.clone();
-                    reg.address = v_reg.address;
-                    reg.spill_offset = None;
-                    self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                    self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
-                    if p_reg >= 19 && p_reg <= 28 {
-                        self.used_callee_saved.insert(p_reg); // Track usage
-                    }
-                    return Ok(reg.clone());
-                }
-            }
-        } else {
-            // Otherwise, use caller-saved
-            if !self.free_caller_saved.is_empty() {
-                let p_reg = self.free_caller_saved.pop_front().unwrap();
-                if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                    reg.v_reg = v_reg.v_reg;
-                    reg.next_uses = next_uses.clone();
-                    reg.address = v_reg.address;
-                    reg.spill_offset = None;
-                    self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                    self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
-                    return Ok(reg.clone());
-                }
+        // Try caller-saved registers first (simpler approach)
+        if !self.free_caller_saved.is_empty() {
+            let p_reg = self.free_caller_saved.pop_front().unwrap();
+            if let Some(reg) = self.reg_map[p_reg].as_mut() {
+                reg.v_reg = v_reg.v_reg;
+                reg.next_uses = next_uses.clone();
+                reg.address = v_reg.address;
+                reg.spill_offset = None;
+                self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                return Ok(reg.clone());
             }
         }
 
@@ -305,6 +286,11 @@ impl Arm64RegisterAllocator {
     // Add a method to get the used callee-saved registers
     pub fn get_used_callee_saved(&self) -> &std::collections::HashSet<usize> {
         &self.used_callee_saved
+    }
+
+    // Add a method to get the total spill space needed
+    pub fn get_spill_space_needed(&self) -> i32 {
+        self.spill_offset
     }
 }
 

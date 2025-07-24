@@ -26,17 +26,19 @@ pub struct Symbol {
     pub scope_level: usize,
     pub is_global: bool,
     pub initialized: bool,
+    pub level: usize, // lexical nesting level
 }
 
 impl Symbol {
-    pub fn new(symbol_type: SymbolType, line_number: usize) -> Self {
+    pub fn new(symbol_type: SymbolType, line_number: usize, location: SymbolLocation, is_global: bool, level: usize) -> Self {
         Self {
             symbol_type,
             line_number,
-            location: SymbolLocation::None,
+            location,
             scope_level: 0,
-            is_global: false,
+            is_global,
             initialized: false,
+            level,
         }
     }
 }
@@ -139,5 +141,9 @@ impl SymbolTable {
             return Err(msg);
         }
         Ok(())
+    }
+
+    pub fn get_scopes_len(&self) -> usize {
+        self.scopes.len()
     }
 }

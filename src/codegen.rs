@@ -368,11 +368,29 @@ impl IRGenerator {
         Ok(result_vreg)
     }
 
-    // Recursively emit all procedures in this block (including nested ones)
-    fn emit_procedures_recursively(&mut self, block: &Block) -> Result<(), RegisterError> {
+    // Collect all procedures (including nested ones) from a block
+    fn collect_all_procedures<'a>(&self, block: &'a Block, procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>)>) {
+        // Add procedures from this block
         for (name, proc_block) in &block.proc_decl.procedurs {
-            self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
-            self.emit_label(name)?;
+            procedures.push((name.clone(), proc_block));
+            // Recursively collect nested procedures
+            if let Some(proc_block) = proc_block {
+                if let Some(nested_block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
+                    self.collect_all_procedures(nested_block, procedures);
+                }
+            }
+        }
+    }
+
+    // Emit all procedures at the top level (no nesting in IR)
+    fn emit_procedures_recursively(&mut self, block: &Block) -> Result<(), RegisterError> {
+        // First, collect all procedures (including nested ones)
+        let mut all_procedures = Vec::new();
+        self.collect_all_procedures(block, &mut all_procedures);
+        // Then emit each procedure at the top level
+        for (name, proc_block) in all_procedures {
+            self.update_symbol_location(&name, SymbolLocation::GlobalLabel(name.clone()), true);
+            self.emit_label(&name)?;
 
             self.current_scope_level += 1;
             self.local_var_offset = 8;
@@ -391,16 +409,13 @@ impl IRGenerator {
             if let Some(proc_block) = proc_block {
                 self.in_procedure = true;
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
-                    // Emit this procedure's variable declarations first
+                    // Emit this procedure's variable declarations
                     if !block.var_decl.var_decl.is_empty() {
                         block.var_decl.accept(self)
                             .map_err(|e| RegisterError::OutputError(e))?;
                     }
 
-                    // Emit nested procedures
-                    self.emit_procedures_recursively(block)?;
-
-                    // Emit this procedure's statements
+                    // Only emit this procedure's statements (no nested procedures)
                     if let Some(stmt) = &block.statement {
                         stmt.accept(self)
                             .map_err(|e| RegisterError::OutputError(e))?;
@@ -408,7 +423,6 @@ impl IRGenerator {
                 }
                 self.in_procedure = false;
             }
-
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
             emitter.emit_proc_exit()?;
             self.current_scope_level -= 1;

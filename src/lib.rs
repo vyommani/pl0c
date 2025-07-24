@@ -15,6 +15,7 @@ pub mod program;
 pub mod register_allocator_arm64;
 pub mod register_allocator_common;
 pub mod register_allocator_x86_64;
+pub mod runtime_arm64;
 pub mod statement;
 pub mod symboltable;
 pub mod token;
