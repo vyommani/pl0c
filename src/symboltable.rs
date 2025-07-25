@@ -78,11 +78,16 @@ impl SymbolTable {
         None
     }
 
-    // Get a reference to a symbol by name, searching from outermost to innermost scope.
-    pub fn get_global_first(&self, name: &str) -> Option<&Symbol> {
-        for scope in self.scopes.iter() {
-            if let Some(sym) = scope.get(name) {
-                return Some(sym);
+    pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
+        let max_level = self.scopes.len().saturating_sub(1);
+        let start_level = level.min(max_level);
+        for scope_idx in (0..=start_level).rev() {
+            if let Some(scope) = self.scopes.get(scope_idx) {
+                if let Some(symbol) = scope.get(name) {
+                    if symbol.level <= start_level {
+                        return Some(symbol);
+                    }
+                }
             }
         }
         None
@@ -145,5 +150,28 @@ impl SymbolTable {
 
     pub fn get_scopes_len(&self) -> usize {
         self.scopes.len()
+    }
+
+    pub fn print_symbols(&self) {
+        println!("Symbol Table Contents:");
+        for (scope_idx, scope) in self.scopes.iter().enumerate() {
+            println!("Scope {}:", scope_idx);
+            if scope.is_empty() {
+                println!("  (empty)");
+            } else {
+                for (name, symbol) in scope {
+                    println!(
+                        "  Name: {}, Type: {:?}, Location: {:?}, IsGlobal: {}, Initialized: {}, ScopeLevel: {}, Level: {}",
+                        name,
+                        symbol.symbol_type,
+                        symbol.location,
+                        symbol.is_global,
+                        symbol.initialized,
+                        symbol.scope_level,
+                        symbol.level
+                    );
+                }
+            }
+        }
     }
 }

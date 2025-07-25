@@ -23,6 +23,8 @@ pub mod types;
 pub mod visiters;
 pub mod ir_dispatch;
 pub mod code_emitter;
+pub mod utils;
+pub mod config;
 
 pub const VERSION: &str = "0.1.1";
 

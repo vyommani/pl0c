@@ -182,17 +182,11 @@ impl IRGenerator {
 
     // Helper function to get a variable symbol specifically
     fn get_variable_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
-        // If we're not in a procedure, prefer global variables
-        if !self.in_procedure {
-            if let Some(symbol) = self.symbol_table.get_global_first(name) {
-                if symbol.is_global && matches!(symbol.symbol_type, SymbolType::Variable) {
-                    return Ok(symbol);
-                }
-            }
+        let symbol = self.symbol_table.get_at_level(name, self.current_scope_level).ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
+        if !matches!(symbol.symbol_type, SymbolType::Variable) {
+            return Err(format!("Expected variable but found {:?}: {}",symbol.symbol_type, name));
         }
-
-        // Otherwise use the normal lookup (innermost scope first)
-        self.get_symbol_with_type(name, SymbolType::Variable, operation)
+        Ok(symbol)
     }
 
     // Helper function to get a procedure symbol specifically
@@ -384,18 +378,16 @@ impl IRGenerator {
 
     // Emit all procedures at the top level (no nesting in IR)
     fn emit_procedures_recursively(&mut self, block: &Block) -> Result<(), RegisterError> {
-        // First, collect all procedures (including nested ones)
         let mut all_procedures = Vec::new();
         self.collect_all_procedures(block, &mut all_procedures);
-        // Then emit each procedure at the top level
         for (name, proc_block) in all_procedures {
             self.update_symbol_location(&name, SymbolLocation::GlobalLabel(name.clone()), true);
             self.emit_label(&name)?;
-
-            self.current_scope_level += 1;
+            // Set scope level based on procedure's Level in symbol table
+            let proc_symbol = self.symbol_table.get(&name)
+                .ok_or_else(|| RegisterError::OutputError(format!("Procedure {} not found in symbol table", name)))?;
+            self.current_scope_level = proc_symbol.level + 1; // Use Level + 1 for locals
             self.local_var_offset = 8;
-
-            // Calculate stack size
             let mut stack_slots = 0;
             if let Some(proc_block) = proc_block {
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
@@ -405,17 +397,13 @@ impl IRGenerator {
             let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
             emitter.emit_proc_enter(stack_size)?;
-
             if let Some(proc_block) = proc_block {
                 self.in_procedure = true;
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
-                    // Emit this procedure's variable declarations
                     if !block.var_decl.var_decl.is_empty() {
                         block.var_decl.accept(self)
                             .map_err(|e| RegisterError::OutputError(e))?;
                     }
-
-                    // Only emit this procedure's statements (no nested procedures)
                     if let Some(stmt) = &block.statement {
                         stmt.accept(self)
                             .map_err(|e| RegisterError::OutputError(e))?;
@@ -425,7 +413,6 @@ impl IRGenerator {
             }
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
             emitter.emit_proc_exit()?;
-            self.current_scope_level -= 1;
         }
         Ok(())
     }
@@ -435,7 +422,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_ident(&mut self, ident: &Ident) -> Result<String, String> {
         let symbol = self
             .symbol_table
-            .get(&ident.value)
+            .get_at_level(&ident.value, self.current_scope_level)
             .ok_or_else(|| format!("Undefined identifier: {}", ident.value))?
             .clone();
         match symbol.symbol_type {
@@ -461,12 +448,8 @@ impl ASTVisitor for IRGenerator {
                 Ok(vreg)
             }
             SymbolType::Variable => {
-                // Use optimized variable loading for variables
                 let vreg = self.get_or_load_variable(&ident.value)?;
-                // If the variable was already loaded, we need to ensure the register is properly tracked
-                // for the expression evaluation system
                 if !vreg.starts_with(&self.vreg_prefix) {
-                    // This shouldn't happen, but just in case
                     return Err(format!("Invalid register format: {}", vreg));
                 }
                 Ok(vreg)
@@ -673,7 +656,7 @@ impl ASTVisitor for IRGenerator {
         for (id, num) in &expr.const_decl {
             let mut emitter = StringCodeEmitter::new(&mut self.data_output);
             emitter.emit_const(id, &num.to_string()).unwrap();
-            self.update_symbol_location(id, SymbolLocation::GlobalLabel(id.clone()), true);
+            self.update_symbol_location(id, SymbolLocation::Immediate(*num), true);
         }
         Ok(())
     }
@@ -704,22 +687,18 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Result<(), String> {
-        // Only process top-level procedures here
-        // Nested procedures are handled in visit_block
         if !self.in_procedure {
             for (name, proc_block) in &expr.procedurs {
                 self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
                 self.emit_label(name)
                     .map_err(|e| e.to_string())?;
-
-                // Enter procedure scope
-                self.current_scope_level += 1;
-                self.local_var_offset = 8; // Reset local variable offset for this procedure
-
-                // Calculate stack size for this procedure
+                // Set scope level based on procedure's Level in symbol table
+                let proc_symbol = self.symbol_table.get_at_level(name, 0)
+                    .ok_or_else(|| format!("Procedure {} not found in symbol table", name))?;
+                self.current_scope_level = proc_symbol.level + 1;
+                self.local_var_offset = 8;
                 let mut stack_slots = 0;
                 if let Some(block) = proc_block {
-                    // Downcast to Block to access var_decl
                     if let Some(block) = block.as_any().downcast_ref::<crate::block::Block>() {
                         stack_slots = block.var_decl.var_decl.len();
                     }
@@ -736,9 +715,6 @@ impl ASTVisitor for IRGenerator {
                 let mut emitter = StringCodeEmitter::new(&mut self.text_output);
                 emitter.emit_proc_exit()
                     .map_err(|e| e.to_string())?;
-
-                // Exit procedure scope
-                self.current_scope_level -= 1;
             }
         }
         Ok(())
@@ -747,6 +723,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_block(&mut self, block: &Block) -> Result<(), String> {
         if !self.in_procedure {
             self.local_var_offset = 8; // Reset stack offset for main
+            self.current_scope_level = 0;
         }
         if !block.const_decl.const_decl.is_empty() {
             block.const_decl.accept(self)?;
@@ -757,8 +734,10 @@ impl ASTVisitor for IRGenerator {
 
         // Recursively emit all procedures at the top level
         if !self.in_procedure {
+            let original_scope_level = self.current_scope_level;
             self.emit_procedures_recursively(block)
                 .map_err(|e| e.to_string())?;
+            self.current_scope_level = original_scope_level;
         }
 
         if let Some(stmt) = &block.statement {
@@ -766,13 +745,11 @@ impl ASTVisitor for IRGenerator {
                 self.emit_label("main")
                     .map_err(|e| e.to_string())?;
                 self.main_emitted = true;
-                // Emit initialization for all stack variables in main
-                // Find all variables with SymbolLocation::StackOffset
+                // Emit stack variables for local variables
                 let mut stack_vars = Vec::new();
                 for symbol in self.symbol_table.all_symbols() {
                     if let SymbolLocation::StackOffset(offset) = symbol.location {
-                        if !symbol.is_global {
-                            // We don't have the name, but we only need offset
+                        if !symbol.is_global && matches!(symbol.symbol_type, SymbolType::Variable) && self.in_procedure {
                             stack_vars.push(offset);
                         }
                     }

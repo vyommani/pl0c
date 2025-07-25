@@ -2,6 +2,7 @@ use crate::{
     assembly_generator::{AssemblyEmitter, RegisterAllocator},
     register_allocator_arm64::RegisterName,
     register_allocator_common::Register,
+    utils::string_utils::write_line,
 };
 use regex::Regex;
 use std::{
@@ -12,12 +13,6 @@ use crate::ir_dispatch::IROp;
 use crate::runtime_arm64::Arm64Runtime;
 
 pub struct Arm64AssemblyEmitter;
-
-fn write_line(buf: &mut String, args: std::fmt::Arguments) -> std::io::Result<()> {
-    use std::fmt::Write;
-    buf.write_fmt(args)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "fmt error"))
-}
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {
     fn emit(
