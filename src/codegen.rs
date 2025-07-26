@@ -12,7 +12,6 @@ use crate::{
     types::{Ident, Number},
     visiters::ASTVisitor,
 };
-use std::fmt::Write;
 
 pub struct IRGenerator {
     label_counter: i32,
@@ -30,6 +29,9 @@ pub struct IRGenerator {
 }
 
 impl IRGenerator {
+    // ---------------------------
+    // Constructor
+    // ---------------------------
     pub fn new(table: SymbolTable) -> Self {
         Self {
             symbol_table: table,
@@ -47,6 +49,9 @@ impl IRGenerator {
         }
     }
 
+    // ---------------------------
+    // Virtual Register & Label Helpers
+    // ---------------------------
     fn allocate_virtual_register(&mut self) -> String {
         let vreg = format!("{}{}", self.vreg_prefix, self.vreg_counter);
         self.vreg_counter += 1;
@@ -59,6 +64,9 @@ impl IRGenerator {
         label
     }
 
+    // ---------------------------
+    // Output & Main Code Helpers
+    // ---------------------------
     pub fn get_output(&self) -> String {
         let mut output = String::new();
         // Add constants as IR data declarations
@@ -80,13 +88,16 @@ impl IRGenerator {
         self.exit_emitted = false;
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
             .accept(self)
-            .map_err(|e| e.to_string())?;
+            .map_err(Self::to_string_error)?;
         if !self.exit_emitted {
-            self.system_exit(0).map_err(|e| e.to_string())?;
+            self.system_exit(0).map_err(Self::to_string_error)?;
         }
         Ok(())
     }
 
+    // ---------------------------
+    // Expression & System Helpers
+    // ---------------------------
     fn emit_expression(&mut self, expr: &dyn crate::ast::ExpressionNode) -> Result<String, String> {
         ExpressionNode::accept(expr, self)
     }
@@ -96,6 +107,63 @@ impl IRGenerator {
         emitter.emit_exit(code)
     }
 
+    // ---------------------------
+    // Symbol Table Helpers
+    // ---------------------------
+    fn get_symbol_with_type(
+        &self,
+        name: &str,
+        expected_type: SymbolType,
+        operation: &str,
+    ) -> Result<&Symbol, String> {
+        let symbol = self
+            .symbol_table
+            .get(name)
+            .ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
+        if std::mem::discriminant(&symbol.symbol_type) != std::mem::discriminant(&expected_type) {
+            return Err(format!(
+                "Expected {:?} but found {:?}: {}",
+                expected_type, symbol.symbol_type, name
+            ));
+        }
+
+        Ok(symbol)
+    }
+
+    fn update_symbol_location(&mut self, name: &str, location: SymbolLocation, is_global: bool) {
+        if let Some(symbol) = self.symbol_table.get_mut(name) {
+            symbol.location = location;
+            symbol.is_global = is_global;
+            if is_global {
+                symbol.initialized = true;
+            }
+        }
+    }
+
+    fn get_variable_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
+        let symbol = self.symbol_table.get_at_level(name, self.current_scope_level).ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
+        if !matches!(symbol.symbol_type, SymbolType::Variable) {
+            return Err(format!("Expected variable but found {:?}: {}",symbol.symbol_type, name));
+        }
+        Ok(symbol)
+    }
+
+    fn get_procedure_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
+        self.get_symbol_with_type(name, SymbolType::Procedure, operation)
+    }
+
+    fn get_or_load_variable(&mut self, variable_name: &str) -> Result<String, String> {
+        // Always load from memory for correctness
+        let symbol = self.get_variable_symbol(variable_name, "variable")?.clone();
+        let vreg = self.allocate_virtual_register();
+        self.emit_load_from_symbol(&symbol, &vreg, variable_name)
+            .map_err(Self::to_string_error)?;
+        Ok(vreg)
+    }
+
+    // ---------------------------
+    // IR Emission Helpers
+    // ---------------------------
     // Helper function to generate load instruction based on symbol location
     fn emit_load_from_symbol(
         &mut self,
@@ -146,61 +214,6 @@ impl IRGenerator {
                 )));
             }
         }
-    }
-
-    // Helper function to get symbol and validate it's the expected type
-    fn get_symbol_with_type(
-        &self,
-        name: &str,
-        expected_type: SymbolType,
-        operation: &str,
-    ) -> Result<&Symbol, String> {
-        let symbol = self
-            .symbol_table
-            .get(name)
-            .ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
-        if std::mem::discriminant(&symbol.symbol_type) != std::mem::discriminant(&expected_type) {
-            return Err(format!(
-                "Expected {:?} but found {:?}: {}",
-                expected_type, symbol.symbol_type, name
-            ));
-        }
-
-        Ok(symbol)
-    }
-
-    // Helper function to update symbol location in symbol table
-    fn update_symbol_location(&mut self, name: &str, location: SymbolLocation, is_global: bool) {
-        if let Some(symbol) = self.symbol_table.get_mut(name) {
-            symbol.location = location;
-            symbol.is_global = is_global;
-            if is_global {
-                symbol.initialized = true;
-            }
-        }
-    }
-
-    // Helper function to get a variable symbol specifically
-    fn get_variable_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
-        let symbol = self.symbol_table.get_at_level(name, self.current_scope_level).ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
-        if !matches!(symbol.symbol_type, SymbolType::Variable) {
-            return Err(format!("Expected variable but found {:?}: {}",symbol.symbol_type, name));
-        }
-        Ok(symbol)
-    }
-
-    // Helper function to get a procedure symbol specifically
-    fn get_procedure_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
-        self.get_symbol_with_type(name, SymbolType::Procedure, operation)
-    }
-
-    // Helper function to get or load a variable efficiently
-    fn get_or_load_variable(&mut self, variable_name: &str) -> Result<String, String> {
-        // Always load from memory for correctness
-        let symbol = self.get_variable_symbol(variable_name, "variable")?.clone();
-        let vreg = self.allocate_virtual_register();
-        self.emit_load_from_symbol(&symbol, &vreg, variable_name).map_err(|e| e.to_string())?;
-        Ok(vreg)
     }
 
     fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Result<(), RegisterError> {
@@ -287,7 +300,7 @@ impl IRGenerator {
     fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Result<(), RegisterError> {
         let symbol = self
             .get_variable_symbol(identifier, "variable in read")
-            .map_err(|e| RegisterError::OutputError(e))?
+            .map_err(Self::to_output_error)?
             .clone();
         let vreg = self.allocate_virtual_register();
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
@@ -303,7 +316,7 @@ impl IRGenerator {
     // Helper: procedure call
     fn emit_procedure_call(&mut self, identifier: &str) -> Result<(), RegisterError> {
         let symbol = self.get_procedure_symbol(identifier, "procedure")
-            .map_err(|e| RegisterError::OutputError(e))?;
+            .map_err(Self::to_output_error)?;
         let label = match &symbol.location {
             SymbolLocation::GlobalLabel(label) => label.clone(),
             SymbolLocation::None => identifier.to_string(),
@@ -313,7 +326,6 @@ impl IRGenerator {
         emitter.emit_call(&label)
     }
 
-    // Helper: binary operation
     fn emit_binary_operation(
         &mut self,
         left_expr: &dyn crate::ast::ExpressionNode,
@@ -321,9 +333,9 @@ impl IRGenerator {
         operator: &str,
     ) -> Result<String, RegisterError> {
         let left_result = self.emit_expression(left_expr)
-            .map_err(|e| RegisterError::OutputError(e))?;
+            .map_err(Self::to_output_error)?;
         let right_result = self.emit_expression(right_expr)
-            .map_err(|e| RegisterError::OutputError(e))?;
+            .map_err(Self::to_output_error)?;
         let result_vreg = self.allocate_virtual_register();
         let op = match operator {
             "Plus" => "add",
@@ -337,7 +349,6 @@ impl IRGenerator {
         Ok(result_vreg)
     }
 
-    // Helper: relational operation
     fn emit_relational_operation(
         &mut self,
         left_expr: &dyn crate::ast::ExpressionNode,
@@ -345,9 +356,9 @@ impl IRGenerator {
         operator: &str,
     ) -> Result<String, RegisterError> {
         let left_result = self.emit_expression(left_expr)
-            .map_err(|e| RegisterError::OutputError(e))?;
+            .map_err(Self::to_output_error)?;
         let right_result = self.emit_expression(right_expr)
-            .map_err(|e| RegisterError::OutputError(e))?;
+            .map_err(Self::to_output_error)?;
         let result_vreg = self.allocate_virtual_register();
         let op = match operator {
             "GreaterThan" => "cmp_gt",
@@ -362,6 +373,9 @@ impl IRGenerator {
         Ok(result_vreg)
     }
 
+    // ---------------------------
+    // Procedure & Block Helpers
+    // ---------------------------
     // Collect all procedures (including nested ones) from a block
     fn collect_all_procedures<'a>(&self, block: &'a Block, procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>)>) {
         // Add procedures from this block
@@ -386,7 +400,7 @@ impl IRGenerator {
             // Set scope level based on procedure's Level in symbol table
             let proc_symbol = self.symbol_table.get(&name)
                 .ok_or_else(|| RegisterError::OutputError(format!("Procedure {} not found in symbol table", name)))?;
-            self.current_scope_level = proc_symbol.level + 1; // Use Level + 1 for locals
+            self.current_scope_level = proc_symbol.level + 1;
             self.local_var_offset = 8;
             let mut stack_slots = 0;
             if let Some(proc_block) = proc_block {
@@ -402,11 +416,11 @@ impl IRGenerator {
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
                     if !block.var_decl.var_decl.is_empty() {
                         block.var_decl.accept(self)
-                            .map_err(|e| RegisterError::OutputError(e))?;
+                            .map_err(Self::to_output_error)?;
                     }
                     if let Some(stmt) = &block.statement {
                         stmt.accept(self)
-                            .map_err(|e| RegisterError::OutputError(e))?;
+                            .map_err(Self::to_output_error)?;
                     }
                 }
                 self.in_procedure = false;
@@ -416,8 +430,22 @@ impl IRGenerator {
         }
         Ok(())
     }
+
+    // ---------------------------
+    // Error Helpers
+    // ---------------------------
+    fn to_output_error<E: std::fmt::Display>(e: E) -> RegisterError {
+        RegisterError::OutputError(e.to_string())
+    }
+
+    fn to_string_error<E: std::fmt::Display>(e: E) -> String {
+        e.to_string()
+    }
 }
 
+// ---------------------------
+// ASTVisitor Implementation
+// ---------------------------
 impl ASTVisitor for IRGenerator {
     fn visit_ident(&mut self, ident: &Ident) -> Result<String, String> {
         let symbol = self

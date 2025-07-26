@@ -11,7 +11,6 @@ use std::{
 };
 use crate::ir_dispatch::IROp;
 use crate::runtime_arm64::Arm64Runtime;
-
 pub struct Arm64AssemblyEmitter;
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {
@@ -93,6 +92,77 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
 }
 
 impl Arm64AssemblyEmitter {
+    fn validate_register(&self, reg: usize, error_msg: &str) -> Result<(), io::Error> {
+        if reg == 12 {
+            Err(io::Error::new(io::ErrorKind::Other, error_msg))
+        } else {
+            Ok(())
+        }
+    }
+
+      fn align_stack_size(stack_size: usize) -> usize {
+        if stack_size > 0 {
+            ((stack_size + 15) / 16) * 16
+        } else {
+            0
+        }
+    }
+
+    fn emit_load_immediate(
+        &self,
+        reg: usize,
+        imm: usize,
+        output: &mut String,
+    ) -> Result<(), io::Error> {
+        let imm_val = imm as u64;
+        if imm >= 0 && imm <= 0xFFFF {
+            write_line(output, format_args!("    mov x{}, #{}\n", reg, imm_val))?;
+        } else {
+            write_line(output, format_args!("    movz x{}, #{}\n", reg, imm_val & 0xFFFF))?;
+            if (imm_val >> 16) & 0xFFFF != 0 {
+                write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", reg, (imm_val >> 16) & 0xFFFF))?;
+            }
+            if (imm_val >> 32) & 0xFFFF != 0 {
+                write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", reg, (imm_val >> 32) & 0xFFFF))?;
+            }
+            if (imm_val >> 48) & 0xFFFF != 0 {
+                write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", reg, (imm_val >> 48) & 0xFFFF))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_load_store_address(
+        &self,
+        output: &mut String,
+        dst_reg: usize,
+        src_or_dst: &str,
+        is_load: bool,
+    ) -> Result<(), io::Error> {
+        if src_or_dst.starts_with("bp-") {
+            let offset = src_or_dst[3..].parse::<i32>().unwrap_or(0);
+            write_line(
+                output,
+                format_args!(
+                    "    {} x{}, [x29, #{}]\n",
+                    if is_load { "ldr" } else { "str" },
+                    dst_reg,
+                    -offset
+                ),
+            )?;
+        } else {
+            self.emit_var_addr(output, 12, src_or_dst)?;
+            write_line(
+                output,
+                format_args!(
+                    "    {} x{}, [x12]\n",
+                    if is_load { "ldr" } else { "str" },
+                    dst_reg
+                ),
+            )?;
+        }
+        Ok(())
+    }
 
     // Helper to collect variables, constants, and flags
     fn collect_data_info(ir: &[String]) -> (std::collections::HashSet<String>, std::collections::HashMap<String, String>, bool, bool) {
@@ -237,11 +307,7 @@ impl Arm64AssemblyEmitter {
         write_line(&mut new_main_output, format_args!("main:\n"))?;
         Self::emit_prologue(&mut new_main_output, allocator)?;
         // Ensure stack alignment to 16 bytes
-        let aligned_stack_size = if main_stack_size > 0 {
-            ((main_stack_size + 15) / 16) * 16
-        } else {
-            0
-        };
+        let aligned_stack_size = Self::align_stack_size(main_stack_size);
         if aligned_stack_size > 0 {
             write_line(&mut new_main_output, format_args!("    sub sp, sp, #{}\n", aligned_stack_size))?;
         }
@@ -368,6 +434,9 @@ impl Arm64AssemblyEmitter {
     }
 
     fn emit_var_addr(&self, output: &mut String, reg: u8, var: &str) -> Result<(), io::Error> {
+        if reg != 12 {
+            return Err(io::Error::new(io::ErrorKind::Other, "Only x12 can be used for addressing"));
+        }
         write_line(output, format_args!("    adrp x{}, {}@PAGE\n", reg, var))?;
         write_line(
             output,
@@ -388,40 +457,8 @@ impl Arm64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
-        // Try to parse as u64 (for large immediates)
-        if let Ok(imm_val) = imm.parse::<u64>() {
-            if imm_val <= 0xFFFF {
-                write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm_val))?;
-            } else {
-                write_line(output, format_args!("    movz x{}, #{}\n", pdst, imm_val & 0xFFFF))?;
-                if (imm_val >> 16) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", pdst, (imm_val >> 16) & 0xFFFF))?;
-                }
-                if (imm_val >> 32) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", pdst, (imm_val >> 32) & 0xFFFF))?;
-                }
-                if (imm_val >> 48) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", pdst, (imm_val >> 48) & 0xFFFF))?;
-                }
-            }
-        } else if let Ok(imm_val) = imm.parse::<i64>() {
-            // For negative immediates, use mov/mvn or movz/movk with sign extension
-            if imm_val >= 0 && imm_val <= 0xFFFF {
-                write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm_val))?;
-            } else {
-                // Fallback: use movz/movk for the unsigned representation
-                let imm_val = imm_val as u64;
-                write_line(output, format_args!("    movz x{}, #{}\n", pdst, imm_val & 0xFFFF))?;
-                if (imm_val >> 16) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", pdst, (imm_val >> 16) & 0xFFFF))?;
-                }
-                if (imm_val >> 32) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", pdst, (imm_val >> 32) & 0xFFFF))?;
-                }
-                if (imm_val >> 48) & 0xFFFF != 0 {
-                    write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", pdst, (imm_val >> 48) & 0xFFFF))?;
-                }
-            }
+        if let Ok(imm_val) = imm.parse::<usize>() {
+            self.emit_load_immediate(pdst, imm_val, output)?;
         } else {
             write_line(output, format_args!("    mov x{}, #{}\n", pdst, imm))?;
         }
@@ -444,18 +481,8 @@ impl Arm64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
-        // Check if this is a stack offset access [bp-offset]
-        if src.starts_with("bp-") {
-            let offset = src[3..].parse::<i32>().unwrap_or(0);
-            write_line(
-                output,
-                format_args!("    ldr x{}, [x29, #{}]\n", pdst, -offset),
-            )?;
-        } else {
-            // Global variable access
-            self.emit_var_addr(output, 12, &src)?;
-            write_line(output, format_args!("    ldr x{}, [x12]\n", pdst))?;
-        }
+        self.validate_register(pdst, "x12 cannot be used for vreg allocation")?;
+        self.emit_load_store_address(output, pdst, &src, true)?;
         if self.is_dead_after(dst, idx, allocator) {
             allocator.free(pdst);
         }
@@ -475,18 +502,8 @@ impl Arm64AssemblyEmitter {
         let psrc = allocator
             .ensure(src, output)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
-        // Check if this is a stack offset access [bp-offset]
-        if dst.starts_with("bp-") {
-            let offset = dst[3..].parse::<i32>().unwrap_or(0);
-            write_line(
-                output,
-                format_args!("    str x{}, [x29, #{}]\n", psrc, -offset),
-            )?;
-        } else {
-            // Global variable access
-            self.emit_var_addr(output, 12, &dst)?;
-            write_line(output, format_args!("    str x{}, [x12]\n", psrc))?;
-        }
+        self.validate_register(psrc, "x12 cannot be used for vreg allocation")?;
+        self.emit_load_store_address(output, psrc, &dst, false)?;
         if self.is_dead_after(src, idx, allocator) {
             allocator.free(psrc);
         }
@@ -515,9 +532,7 @@ impl Arm64AssemblyEmitter {
             };
             let pdst = allocator.alloc(dst, output)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            if pdst == 12 {
-                return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
-            }
+            self.validate_register(pdst, "x12 cannot be used for computation")?;
             write_line(output, format_args!("    mov x{}, #{}\n", pdst, result))?;
             if self.is_dead_after(dst, idx, allocator) {
                 allocator.free(pdst);
@@ -527,9 +542,7 @@ impl Arm64AssemblyEmitter {
     
         let psrc1 = allocator.ensure(src1, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        if psrc1 == 12 {
-            return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
-        }
+        self.validate_register(psrc1, "x12 cannot be used for computation")?;
     
         // Reuse psrc1 for dst if temporary and dead
         let pdst = if dst == src1 || (self.is_dead_after(dst, idx, allocator) && !allocator.get_vreg(dst).map_or(false, |r| r.downcast_ref::<Register<RegisterName>>().map_or(false, |reg| reg.live_across_call))) {
@@ -538,9 +551,7 @@ impl Arm64AssemblyEmitter {
             allocator.alloc(dst, output)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
         };
-        if pdst == 12 {
-            return Err(io::Error::new(io::ErrorKind::Other, "x12 cannot be used for computation"));
-        }
+        self.validate_register(pdst, "x12 cannot be used for computation")?;
     
         if let Ok(imm) = src2.parse::<i64>() {
             match op {
@@ -808,11 +819,7 @@ impl Arm64AssemblyEmitter {
                     proc_stack.push(proc_name);
                 }
                 let stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-                let aligned_stack_size = if stack_size > 0 {
-                    ((stack_size + 15) / 16) * 16
-                } else {
-                    0
-                };
+                let aligned_stack_size = Self::align_stack_size(stack_size);
                 proc_stack_sizes.push(aligned_stack_size);
                 Arm64AssemblyEmitter::emit_prologue(target_output, allocator)?;
                 if aligned_stack_size > 0 {

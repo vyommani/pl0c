@@ -4,6 +4,9 @@ use std::cmp::Reverse;
 use crate::code_emitter::CodeEmitter;
 use crate::code_emitter::StringCodeEmitter;
 
+use crate::register_pool::RegisterPool;
+use crate::spill_manager::SpillManager;
+use crate::live_range_manager::LiveRangeManager;
 use crate::{
     assembly_generator::RegisterAllocator,
     register_allocator_common::{Register, RegisterConstraints, RegisterError},
@@ -68,25 +71,22 @@ const NUM_REGS: usize = 32; // X0-X30, SP
 const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
 pub struct Arm64RegisterAllocator {
-    free_caller_saved: VecDeque<usize>, // X0-X15 (excluding X12)
-    free_callee_saved: VecDeque<usize>, // X19-X28
+    pool: RegisterPool,
     reg_map: [Option<Register<RegisterName>>; NUM_REGS],
     pub vreg_map: HashMap<String, Register<RegisterName>>,
-    spill_offset: i32,
-    free_spill_slots: BinaryHeap<Reverse<i32>>, // Track freed spill slots
-    live_ranges: HashMap<usize, (i32, i32)>, // v_reg ID -> (start, end) instruction indices
+    spill_manager: SpillManager,
+    live_range_manager: LiveRangeManager,
     current_instruction: i32, // Track current instruction index
     pub used_callee_saved: std::collections::HashSet<usize>, // Track used callee-saved registers
 }
 
 impl Arm64RegisterAllocator {
     pub fn new() -> Self {
-        let mut free_caller_saved = VecDeque::new();
-        let mut free_callee_saved = VecDeque::new();
+        let pool = RegisterPool::new();
         let mut reg_map: [Option<Register<RegisterName>>; NUM_REGS] = Default::default();
         let vreg_map = HashMap::with_capacity(16);
-        let live_ranges = HashMap::with_capacity(16);
-        let free_spill_slots = BinaryHeap::new();
+        let live_range_manager = LiveRangeManager::new();
+        let spill_manager = SpillManager::new();
         let used_callee_saved = std::collections::HashSet::new();
 
         for i in 0..NUM_REGS {
@@ -100,56 +100,30 @@ impl Arm64RegisterAllocator {
                     spill_offset: None,
                     live_across_call: false,
                 });
-                if ALLOCATABLE_INDICES.contains(&i) {
-                    if i <= 15 {
-                        free_caller_saved.push_back(i);
-                    } else {
-                        free_callee_saved.push_back(i);
-                    }
-                }
             }
         }
 
         Self {
-            free_caller_saved,
-            free_callee_saved,
+            pool,
             reg_map,
             vreg_map,
-            spill_offset: 0,
-            free_spill_slots,
-            live_ranges,
+            spill_manager,
+            live_range_manager,
             current_instruction: 0,
             used_callee_saved,
         }
     }
 
     pub fn set_instruction_index(&mut self, index: i32) {
-        self.current_instruction = index;
+        self.live_range_manager.set_instruction_index(index);
     }
 
     pub fn set_live_range(&mut self, v_reg: usize, start: i32, end: i32) {
-        self.live_ranges.insert(v_reg, (start, end));
+        self.live_range_manager.set_range(v_reg, start, end);
     }
 
     fn can_coalesce(&self, v_reg: usize, other_v_reg: usize) -> bool {
-        if v_reg == other_v_reg {
-            return false;
-        }
-        let (start1, end1) = self.live_ranges.get(&v_reg).copied().unwrap_or((0, i32::MAX));
-        let (start2, end2) = self.live_ranges.get(&other_v_reg).copied().unwrap_or((0, i32::MAX));
-        end1 < start2 || end2 < start1
-    }
-
-    fn allocate_spill_slot(&mut self) -> i32 {
-        if let Some(Reverse(slot)) = self.free_spill_slots.pop() {
-            slot // Reuse freed slot
-        } else {
-            self.spill_offset += 8;
-            if self.spill_offset % 16 != 0 {
-                self.spill_offset += 8; // Ensure 16-byte alignment
-            }
-            self.spill_offset
-        }
+        self.live_range_manager.can_coalesce(v_reg, other_v_reg)
     }
 
     pub fn free(&mut self, p_reg: usize) {
@@ -159,22 +133,15 @@ impl Arm64RegisterAllocator {
         if let Some(reg) = self.reg_map[p_reg].as_mut() {
             let v_reg = reg.v_reg;
             if let Some(spill_offset) = reg.spill_offset {
-                self.free_spill_slots.push(Reverse(spill_offset));
+                self.spill_manager.free_slot(spill_offset);
             }
             reg.v_reg = usize::MAX;
             reg.next_uses.clear();
             reg.address = 0;
             reg.spill_offset = None;
-            // Return to free pool
-            if ALLOCATABLE_INDICES.contains(&p_reg) {
-                if p_reg <= 15 {
-                    self.free_caller_saved.push_back(p_reg);
-                } else {
-                    self.free_callee_saved.push_back(p_reg);
-                }
-            }
+            self.pool.free(p_reg);
             self.vreg_map.remove(&v_reg.to_string()); // Clear vreg_map
-            self.live_ranges.remove(&v_reg);
+            self.live_range_manager.remove_range(v_reg);
         }
     }
 
@@ -209,35 +176,39 @@ impl Arm64RegisterAllocator {
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
+                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
+                }
                 return Ok(reg.clone());
             }
         }
 
         // Try caller-saved registers first (simpler approach)
-        if !self.free_caller_saved.is_empty() {
-            let p_reg = self.free_caller_saved.pop_front().unwrap();
+        if let Some(p_reg) = self.pool.allocate_caller_saved() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses.clone();
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
+                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
+                }
                 return Ok(reg.clone());
             }
         }
 
         // Callee-saved fallback (if not live_across_call but caller-saved exhausted)
-        if !self.free_callee_saved.is_empty() {
-            let p_reg = self.free_callee_saved.pop_front().unwrap();
+        if let Some(p_reg) = self.pool.allocate_callee_saved() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses.clone();
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
+                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
+                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
+                }
                 if p_reg >= 19 && p_reg <= 28 {
                     self.used_callee_saved.insert(p_reg); // Track usage
                 }
@@ -265,7 +236,7 @@ impl Arm64RegisterAllocator {
             .as_ref()
             .map(|reg| reg.name.clone())
             .ok_or(RegisterError::NoRegistersAvailable)?;
-        let spill_offset = self.allocate_spill_slot();
+        let spill_offset = self.spill_manager.allocate_slot();
         emitter.emit(&format!("str {}, [sp, -{}]", reg_name, spill_offset))?;
 
         if let Some(reg) = self.reg_map[spill_idx].as_mut() {
@@ -275,8 +246,10 @@ impl Arm64RegisterAllocator {
             reg.address = v_reg.address;
             reg.spill_offset = Some(spill_offset);
             self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-            self.live_ranges.insert(v_reg.v_reg, self.live_ranges.get(&v_reg.v_reg).copied().unwrap_or((0, i32::MAX)));
-            self.live_ranges.remove(&old_v_reg);
+            if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
+                self.live_range_manager.set_range(v_reg.v_reg, start, end);
+            }
+            self.live_range_manager.remove_range(old_v_reg);
             Ok(reg.clone())
         } else {
             Err(RegisterError::NoRegistersAvailable)
@@ -290,7 +263,7 @@ impl Arm64RegisterAllocator {
 
     // Add a method to get the total spill space needed
     pub fn get_spill_space_needed(&self) -> i32 {
-        self.spill_offset
+        self.spill_manager.total_space()
     }
 }
 

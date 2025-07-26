@@ -25,6 +25,9 @@ pub mod ir_dispatch;
 pub mod code_emitter;
 pub mod utils;
 pub mod config;
+pub mod register_pool;
+pub mod spill_manager;
+pub mod live_range_manager;
 
 pub const VERSION: &str = "0.1.1";
 
