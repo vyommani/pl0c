@@ -150,6 +150,40 @@ impl Arm64AssemblyEmitter {
                     -offset
                 ),
             )?;
+        } else if src_or_dst.starts_with("up-") {
+            let parts: Vec<&str> = src_or_dst[3..].split('-').collect();
+            if parts.len() != 2 {
+                return Err(io::Error::new(io::ErrorKind::Other, "Invalid up-<offset>-<distance> format"));
+            }
+            let offset = parts[0].parse::<i32>().unwrap_or(0);
+            let distance = parts[1].parse::<usize>().unwrap_or(0);
+            if distance > 0 {
+                let temp_reg = 10; // x10: caller-saved, unused by v0–v8 in IR
+                write_line(output, format_args!("    mov x{}, x29\n", temp_reg))?;
+                for _ in 0..distance {
+                    write_line(output, format_args!("    ldr x{}, [x{}, #-8]\n", temp_reg, temp_reg))?;
+                }
+                write_line(
+                    output,
+                    format_args!(
+                        "    {} x{}, [x{}, #{}]\n",
+                        if is_load { "ldr" } else { "str" },
+                        dst_reg,
+                        temp_reg,
+                        -offset
+                    ),
+                )?;
+            } else {
+                write_line(
+                    output,
+                    format_args!(
+                        "    {} x{}, [x29, #{}]\n",
+                        if is_load { "ldr" } else { "str" },
+                        dst_reg,
+                        -offset
+                    ),
+                )?;
+            }
         } else {
             self.emit_var_addr(output, 12, src_or_dst)?;
             write_line(

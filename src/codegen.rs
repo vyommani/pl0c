@@ -172,10 +172,18 @@ impl IRGenerator {
         fallback_name: &str,
     ) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let distance = if self.current_scope_level > symbol.level {
+            self.current_scope_level - symbol.level
+        } else {
+            0
+        };
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
-                // Local variable on stack
-                emitter.emit_ld(target_vreg, &format!("bp-{}", offset))
+               if distance > 0 {
+                    emitter.emit_ld(target_vreg, &format!("up-{}-{}", offset, distance))
+                } else {
+                    emitter.emit_ld(target_vreg, &format!("bp-{}", offset))
+                }
             }
             SymbolLocation::GlobalLabel(label) => {
                 emitter.emit_ld(target_vreg, label)
@@ -197,9 +205,18 @@ impl IRGenerator {
         fallback_name: &str,
     ) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let distance = if self.current_scope_level > symbol.level {
+            self.current_scope_level - symbol.level
+        } else {
+            0
+        };
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
-                emitter.emit_st(&format!("bp-{}", offset), source_vreg)
+                if distance > 0 {
+                    emitter.emit_st(&format!("up-{}-{}", offset, distance), source_vreg)
+                } else {
+                    emitter.emit_st(&format!("bp-{}", offset), source_vreg)
+                }
             }
             SymbolLocation::GlobalLabel(label) => {
                 emitter.emit_st(label, source_vreg)
@@ -401,14 +418,14 @@ impl IRGenerator {
             let proc_symbol = self.symbol_table.get(&name)
                 .ok_or_else(|| RegisterError::OutputError(format!("Procedure {} not found in symbol table", name)))?;
             self.current_scope_level = proc_symbol.level + 1;
-            self.local_var_offset = 8;
+            self.local_var_offset = 16;
             let mut stack_slots = 0;
             if let Some(proc_block) = proc_block {
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
                     stack_slots = block.var_decl.var_decl.len();
                 }
             }
-            let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
+            let stack_size = ((stack_slots * 8 + 8 + 15) / 16) * 16;
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
             emitter.emit_proc_enter(stack_size)?;
             if let Some(proc_block) = proc_block {
@@ -724,14 +741,14 @@ impl ASTVisitor for IRGenerator {
                 let proc_symbol = self.symbol_table.get_at_level(name, 0)
                     .ok_or_else(|| format!("Procedure {} not found in symbol table", name))?;
                 self.current_scope_level = proc_symbol.level + 1;
-                self.local_var_offset = 8;
+                self.local_var_offset = 16;
                 let mut stack_slots = 0;
                 if let Some(block) = proc_block {
                     if let Some(block) = block.as_any().downcast_ref::<crate::block::Block>() {
                         stack_slots = block.var_decl.var_decl.len();
                     }
                 }
-                let stack_size = ((stack_slots * 8 + 15) / 16) * 16;
+                let stack_size = ((stack_slots * 8 + 8 + 15) / 16) * 16 + 8;
                 let mut emitter = StringCodeEmitter::new(&mut self.text_output);
                 emitter.emit_proc_enter(stack_size)
                     .map_err(|e| e.to_string())?;
@@ -750,7 +767,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_block(&mut self, block: &Block) -> Result<(), String> {
         if !self.in_procedure {
-            self.local_var_offset = 8; // Reset stack offset for main
+            self.local_var_offset = 16; // Reset stack offset for main
             self.current_scope_level = 0;
         }
         if !block.const_decl.const_decl.is_empty() {

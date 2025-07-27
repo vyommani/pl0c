@@ -78,16 +78,12 @@ impl SymbolTable {
         None
     }
 
-    pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
-        let max_level = self.scopes.len().saturating_sub(1);
-        let start_level = level.min(max_level);
-        for scope_idx in (0..=start_level).rev() {
-            if let Some(scope) = self.scopes.get(scope_idx) {
-                if let Some(symbol) = scope.get(name) {
-                    if symbol.level <= start_level {
-                        return Some(symbol);
-                    }
-                }
+   pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
+        // Search from innermost to outermost, but only up to the given lexical level
+        for (scope_idx, scope) in self.scopes.iter().enumerate().rev() {
+            if scope_idx > level { continue; }
+            if let Some(symbol) = scope.get(name) {
+                return Some(symbol);
             }
         }
         None
@@ -173,5 +169,18 @@ impl SymbolTable {
                 }
             }
         }
+    }
+
+    pub fn get_with_distance(&self, name: &str, current_level: usize) -> Option<(&Symbol, usize)> {
+        let mut distance = 0;
+        for (scope_idx, scope) in self.scopes.iter().enumerate().rev() {
+            if let Some(symbol) = scope.get(name) {
+                // Distance = current_level - symbol.level
+                let d = current_level.saturating_sub(symbol.level);
+                return Some((symbol, d));
+            }
+            distance += 1;
+        }
+        None
     }
 }
