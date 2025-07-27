@@ -19,6 +19,7 @@ use crate::statement::CallStmt;
 use crate::statement::IfStmt;
 use crate::statement::WhileStatement;
 use crate::symboltable::Symbol;
+use crate::symboltable::SymbolLocation;
 use crate::symboltable::SymbolTable;
 use crate::symboltable::SymbolType;
 use crate::token::Token;
@@ -26,7 +27,6 @@ use crate::types::Ident;
 use crate::types::Number;
 use std::process::exit;
 use std::slice::Iter;
-use crate::symboltable::SymbolLocation;
 
 static mut TOKEN: Token = Token::Null;
 static mut LINE_NUMBER: usize = 1;
@@ -109,7 +109,16 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Equal, iter);
             num = get_numeric_literal(TOKEN.clone());
-            table.insert(&id, Symbol::new(SymbolType::Constant(num), LINE_NUMBER, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
+            table.insert(
+                &id,
+                Symbol::new(
+                    SymbolType::Constant(num),
+                    LINE_NUMBER,
+                    SymbolLocation::GlobalLabel(id.clone()),
+                    true,
+                    table.get_scopes_len() - 1,
+                ),
+            );
             expect(Token::Number(DEFAULT_NUMBER), iter);
             consts.push((id.clone(), num));
             while TOKEN == Token::Comma {
@@ -118,7 +127,16 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 expect(Token::Equal, iter);
                 num = get_numeric_literal(TOKEN.clone());
-                table.insert(&id, Symbol::new(SymbolType::Constant(num), LINE_NUMBER, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
+                table.insert(
+                    &id,
+                    Symbol::new(
+                        SymbolType::Constant(num),
+                        LINE_NUMBER,
+                        SymbolLocation::GlobalLabel(id.clone()),
+                        true,
+                        table.get_scopes_len() - 1,
+                    ),
+                );
                 expect(Token::Number(DEFAULT_NUMBER), iter);
                 consts.push((id.clone(), num));
             }
@@ -137,7 +155,16 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             } else {
                 SymbolLocation::StackOffset(offset)
             };
-            table.insert(&id, Symbol::new(SymbolType::Variable, LINE_NUMBER, location, is_global, table.get_scopes_len() - 1));
+            table.insert(
+                &id,
+                Symbol::new(
+                    SymbolType::Variable,
+                    LINE_NUMBER,
+                    location,
+                    is_global,
+                    table.get_scopes_len() - 1,
+                ),
+            );
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             idents.push(id);
             while TOKEN == Token::Comma {
@@ -151,7 +178,16 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
                 } else {
                     SymbolLocation::StackOffset(offset)
                 };
-                table.insert(&id, Symbol::new(SymbolType::Variable, LINE_NUMBER, location, is_global, table.get_scopes_len() - 1));
+                table.insert(
+                    &id,
+                    Symbol::new(
+                        SymbolType::Variable,
+                        LINE_NUMBER,
+                        location,
+                        is_global,
+                        table.get_scopes_len() - 1,
+                    ),
+                );
                 expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
                 idents.push(id);
             }
@@ -163,7 +199,16 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable) -> Option<Box
             // We have to always insert the procedure name in global(top) scope.
             expect(Token::Procedure, iter);
             let name = get_identifier(TOKEN.clone());
-            table.insert(&name, Symbol::new(SymbolType::Procedure, LINE_NUMBER, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1));
+            table.insert(
+                &name,
+                Symbol::new(
+                    SymbolType::Procedure,
+                    LINE_NUMBER,
+                    SymbolLocation::GlobalLabel(name.clone()),
+                    true,
+                    table.get_scopes_len() - 1,
+                ),
+            );
             table.push_scope();
             expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
             expect(Token::Semicolon, iter);

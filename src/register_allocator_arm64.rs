@@ -1,12 +1,12 @@
-use std::collections::{VecDeque, HashMap, BinaryHeap};
-use std::fmt::{self, Write as FmtWrite};
-use std::cmp::Reverse;
 use crate::code_emitter::CodeEmitter;
 use crate::code_emitter::StringCodeEmitter;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::fmt::{self, Write as FmtWrite};
 
+use crate::live_range_manager::LiveRangeManager;
 use crate::register_pool::RegisterPool;
 use crate::spill_manager::SpillManager;
-use crate::live_range_manager::LiveRangeManager;
 use crate::{
     assembly_generator::RegisterAllocator,
     register_allocator_common::{Register, RegisterConstraints, RegisterError},
@@ -14,8 +14,38 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
-    X0 = 0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15,
-    X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, SP,
+    X0 = 0,
+    X1,
+    X2,
+    X3,
+    X4,
+    X5,
+    X6,
+    X7,
+    X8,
+    X9,
+    X10,
+    X11,
+    X12,
+    X13,
+    X14,
+    X15,
+    X16,
+    X17,
+    X18,
+    X19,
+    X20,
+    X21,
+    X22,
+    X23,
+    X24,
+    X25,
+    X26,
+    X27,
+    X28,
+    X29,
+    X30,
+    SP,
 }
 
 impl fmt::Display for RegisterName {
@@ -31,14 +61,38 @@ impl fmt::Display for RegisterName {
 }
 
 const ALL_REGS: [RegisterName; 32] = [
-    RegisterName::X0, RegisterName::X1, RegisterName::X2, RegisterName::X3,
-    RegisterName::X4, RegisterName::X5, RegisterName::X6, RegisterName::X7,
-    RegisterName::X8, RegisterName::X9, RegisterName::X10, RegisterName::X11,
-    RegisterName::X12, RegisterName::X13, RegisterName::X14, RegisterName::X15,
-    RegisterName::X16, RegisterName::X17, RegisterName::X18, RegisterName::X19,
-    RegisterName::X20, RegisterName::X21, RegisterName::X22, RegisterName::X23,
-    RegisterName::X24, RegisterName::X25, RegisterName::X26, RegisterName::X27,
-    RegisterName::X28, RegisterName::X29, RegisterName::X30, RegisterName::SP,
+    RegisterName::X0,
+    RegisterName::X1,
+    RegisterName::X2,
+    RegisterName::X3,
+    RegisterName::X4,
+    RegisterName::X5,
+    RegisterName::X6,
+    RegisterName::X7,
+    RegisterName::X8,
+    RegisterName::X9,
+    RegisterName::X10,
+    RegisterName::X11,
+    RegisterName::X12,
+    RegisterName::X13,
+    RegisterName::X14,
+    RegisterName::X15,
+    RegisterName::X16,
+    RegisterName::X17,
+    RegisterName::X18,
+    RegisterName::X19,
+    RegisterName::X20,
+    RegisterName::X21,
+    RegisterName::X22,
+    RegisterName::X23,
+    RegisterName::X24,
+    RegisterName::X25,
+    RegisterName::X26,
+    RegisterName::X27,
+    RegisterName::X28,
+    RegisterName::X29,
+    RegisterName::X30,
+    RegisterName::SP,
 ];
 
 impl RegisterName {
@@ -53,22 +107,64 @@ impl RegisterName {
     pub fn get_constraints(&self) -> &'static RegisterConstraints {
         use RegisterName::*;
         match self {
-            X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7 => &RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Function arguments/return value" },
-            X8 => &RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Indirect result, temporary" },
-            X9 | X10 | X11 | X13 | X14 | X15 => &RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Caller-saved temporary" },
-            X12 => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Reserved (e.g., for address calculation)" },
-            X16 | X17 => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Intra-procedure call temporary" },
-            X18 => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Platform register (OS-specific)" },
-            X19 | X20 | X21 | X22 | X23 | X24 | X25 | X26 | X27 | X28 => &RegisterConstraints { can_allocate: true, can_spill: true, special_purpose: "Callee-saved" },
-            X29 => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Frame pointer" },
-            X30 => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Link register" },
-            SP => &RegisterConstraints { can_allocate: false, can_spill: false, special_purpose: "Stack pointer" },
+            X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7 => &RegisterConstraints {
+                can_allocate: true,
+                can_spill: true,
+                special_purpose: "Function arguments/return value",
+            },
+            X8 => &RegisterConstraints {
+                can_allocate: true,
+                can_spill: true,
+                special_purpose: "Indirect result, temporary",
+            },
+            X9 | X10 | X11 | X13 | X14 | X15 => &RegisterConstraints {
+                can_allocate: true,
+                can_spill: true,
+                special_purpose: "Caller-saved temporary",
+            },
+            X12 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Reserved (e.g., for address calculation)",
+            },
+            X16 | X17 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Intra-procedure call temporary",
+            },
+            X18 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Platform register (OS-specific)",
+            },
+            X19 | X20 | X21 | X22 | X23 | X24 | X25 | X26 | X27 | X28 => &RegisterConstraints {
+                can_allocate: true,
+                can_spill: true,
+                special_purpose: "Callee-saved",
+            },
+            X29 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Frame pointer",
+            },
+            X30 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Link register",
+            },
+            SP => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Stack pointer",
+            },
         }
     }
 }
 
 const NUM_REGS: usize = 32; // X0-X30, SP
-const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
+const ALLOCATABLE_INDICES: &[usize] = &[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+];
 
 pub struct Arm64RegisterAllocator {
     pool: RegisterPool,
@@ -146,10 +242,10 @@ impl Arm64RegisterAllocator {
     }
 
     pub fn alloc(
-         &mut self,
-         v_reg: &Register<RegisterName>,
-         vreg_name: &str,
-         emitter: &mut dyn CodeEmitter,
+        &mut self,
+        v_reg: &Register<RegisterName>,
+        vreg_name: &str,
+        emitter: &mut dyn CodeEmitter,
     ) -> Result<Register<RegisterName>, RegisterError> {
         // Update next_uses based on current instruction
         let mut next_uses = v_reg.next_uses.clone();
@@ -161,11 +257,13 @@ impl Arm64RegisterAllocator {
             .iter()
             .enumerate()
             .filter_map(|(i, r)| {
-                r.as_ref().filter(|reg| {
-                    reg.v_reg != usize::MAX
-                        && reg.spill_offset.is_none()
-                        && self.can_coalesce(v_reg.v_reg, reg.v_reg)
-                }).map(|reg| (i, reg.v_reg))
+                r.as_ref()
+                    .filter(|reg| {
+                        reg.v_reg != usize::MAX
+                            && reg.spill_offset.is_none()
+                            && self.can_coalesce(v_reg.v_reg, reg.v_reg)
+                    })
+                    .map(|reg| (i, reg.v_reg))
             })
             .collect();
 
@@ -298,7 +396,8 @@ impl RegisterAllocator for Arm64RegisterAllocator {
                 emitter.emit_ldr(&allocated.name, spill_offset)?;
                 if let Some(reg) = self.reg_map[allocated.p_reg].as_mut() {
                     reg.spill_offset = None;
-                    reg.next_uses.retain(|&use1| use1 >= self.current_instruction);
+                    reg.next_uses
+                        .retain(|&use1| use1 >= self.current_instruction);
                 }
             }
             emitter.flush()?;

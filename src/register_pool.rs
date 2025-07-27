@@ -7,7 +7,9 @@ pub struct RegisterPool {
 }
 
 const NUM_REGS: usize = 32; // X0-X30, SP
-const ALLOCATABLE_INDICES: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
+const ALLOCATABLE_INDICES: &[usize] = &[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+];
 
 impl RegisterPool {
     /// Creates a new register pool, populating caller-saved and callee-saved registers.
@@ -21,7 +23,10 @@ impl RegisterPool {
                 callee_saved.push_back(i);
             }
         }
-        RegisterPool { caller_saved, callee_saved }
+        RegisterPool {
+            caller_saved,
+            callee_saved,
+        }
     }
 
     /// Allocates a caller-saved register, returning its index if available.

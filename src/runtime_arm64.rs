@@ -1,6 +1,6 @@
-use std::io;
 use crate::assembly_generator::RegisterAllocator;
 use crate::utils::string_utils::write_line;
+use std::io;
 pub struct Arm64Runtime;
 
 impl Arm64Runtime {
@@ -39,7 +39,7 @@ impl Arm64Runtime {
 
         // Post-call cleanup (move from x0 for output functions like read_int)
         post_call_cleanup(preg, output)?;
-        
+
         // Cleanup if dead
         if is_dead_after_fn(reg_name, idx, allocator) {
             allocator.free(preg);
@@ -56,14 +56,22 @@ impl Arm64Runtime {
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
     ) -> Result<(), io::Error> {
-        Self::emit_runtime_call_generic(src, idx, allocator, output, "_write_int", false, |preg, output| {
-            if preg != 0 {
-                write_line(output, format_args!("    mov x0, x{}\n", preg))?;
-            }
-            Ok(())
-        }, |preg, output| {
-            Ok(())
-        }, is_dead_after_fn)
+        Self::emit_runtime_call_generic(
+            src,
+            idx,
+            allocator,
+            output,
+            "_write_int",
+            false,
+            |preg, output| {
+                if preg != 0 {
+                    write_line(output, format_args!("    mov x0, x{}\n", preg))?;
+                }
+                Ok(())
+            },
+            |preg, output| Ok(()),
+            is_dead_after_fn,
+        )
     }
 
     /// Emit a call to read_int runtime function
@@ -74,11 +82,17 @@ impl Arm64Runtime {
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
     ) -> Result<(), io::Error> {
-        Self::emit_runtime_call_generic(dst, idx, allocator, output, "_read_int", true, |preg, output| {
-            Ok(())
-        }, |preg, output| {
-            write_line(output, format_args!("    mov x{}, x0\n", preg))
-        }, is_dead_after_fn)
+        Self::emit_runtime_call_generic(
+            dst,
+            idx,
+            allocator,
+            output,
+            "_read_int",
+            true,
+            |preg, output| Ok(()),
+            |preg, output| write_line(output, format_args!("    mov x{}, x0\n", preg)),
+            is_dead_after_fn,
+        )
     }
 
     /// Emit a call to write_str runtime function
@@ -89,14 +103,22 @@ impl Arm64Runtime {
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
     ) -> Result<(), io::Error> {
-        Self::emit_runtime_call_generic(src, idx, allocator, output, "_write_str", false, |preg, output| {
-            if preg != 0 {
-                write_line(output, format_args!("    mov x0, x{}\n", preg))?;
-            }
-            Ok(())
-        }, |preg, output| {
-            Ok(())
-        }, is_dead_after_fn)
+        Self::emit_runtime_call_generic(
+            src,
+            idx,
+            allocator,
+            output,
+            "_write_str",
+            false,
+            |preg, output| {
+                if preg != 0 {
+                    write_line(output, format_args!("    mov x0, x{}\n", preg))?;
+                }
+                Ok(())
+            },
+            |preg, output| Ok(()),
+            is_dead_after_fn,
+        )
     }
 
     /// Emit the complete write_int runtime function implementation
@@ -114,10 +136,7 @@ impl Arm64Runtime {
         write_line(output, format_args!("    stp x19, x20, [sp, #-16]!\n"))?;
         write_line(output, format_args!("    stp x21, x22, [sp, #-16]!\n"))?;
         write_line(output, format_args!("    adrp x1, int_buffer@PAGE\n"))?;
-        write_line(
-            output,
-            format_args!("    add x1, x1, int_buffer@PAGEOFF\n"),
-        )?;
+        write_line(output, format_args!("    add x1, x1, int_buffer@PAGEOFF\n"))?;
         write_line(output, format_args!("    mov x2, #0\n"))?;
         write_line(output, format_args!("    mov x19, x0\n"))?;
         write_line(output, format_args!("    mov x20, #0\n"))?;
@@ -193,39 +212,51 @@ impl Arm64Runtime {
         write_line(output, format_args!("    mov x29, sp\n"))?;
         write_line(output, format_args!("    stp x19, x20, [sp, #-16]!\n"))?;
         write_line(output, format_args!("    str x21, [sp, #-16]!\n"))?;
-        
+
         // Read input from stdin
         write_line(output, format_args!("    adrp x1, input_buffer@PAGE\n"))?;
-        write_line(output, format_args!("    add x1, x1, input_buffer@PAGEOFF\n"))?;
-        write_line(output, format_args!("    mov x0, #0\n"))?;  // stdin
+        write_line(
+            output,
+            format_args!("    add x1, x1, input_buffer@PAGEOFF\n"),
+        )?;
+        write_line(output, format_args!("    mov x0, #0\n"))?; // stdin
         write_line(output, format_args!("    mov x2, #24\n"))?; // buffer size
-        write_line(output, format_args!("    movz x16, #(0x2000003 & 0xFFFF)\n"))?;
-        write_line(output, format_args!("    movk x16, #((0x2000003 >> 16) & 0xFFFF), lsl #16\n"))?;
+        write_line(
+            output,
+            format_args!("    movz x16, #(0x2000003 & 0xFFFF)\n"),
+        )?;
+        write_line(
+            output,
+            format_args!("    movk x16, #((0x2000003 >> 16) & 0xFFFF), lsl #16\n"),
+        )?;
         write_line(output, format_args!("    svc #0\n"))?;
-        
+
         // x0 now contains number of bytes read
         write_line(output, format_args!("    mov x19, x0\n"))?; // Save bytes read count
         write_line(output, format_args!("    adrp x1, input_buffer@PAGE\n"))?;
-        write_line(output, format_args!("    add x1, x1, input_buffer@PAGEOFF\n"))?;
-        
+        write_line(
+            output,
+            format_args!("    add x1, x1, input_buffer@PAGEOFF\n"),
+        )?;
+
         // Initialize parsing variables
-        write_line(output, format_args!("    mov x0, #0\n"))?;  // result accumulator
+        write_line(output, format_args!("    mov x0, #0\n"))?; // result accumulator
         write_line(output, format_args!("    mov x20, #0\n"))?; // current index
         write_line(output, format_args!("    mov x21, #0\n"))?; // negative flag
-        
+
         // Check for negative sign
         write_line(output, format_args!("    ldrb w2, [x1]\n"))?;
         write_line(output, format_args!("    cmp w2, #'-'\n"))?;
         write_line(output, format_args!("    b.ne .Lparse_loop\n"))?;
         write_line(output, format_args!("    mov x21, #1\n"))?; // Set negative flag
         write_line(output, format_args!("    add x20, x20, #1\n"))?; // Skip the '-' character
-        
+
         // Main parsing loop
         write_line(output, format_args!(".Lparse_loop:\n"))?;
         write_line(output, format_args!("    cmp x20, x19\n"))?; // Check if we've reached end of input
         write_line(output, format_args!("    b.ge .Lparse_done\n"))?;
         write_line(output, format_args!("    ldrb w2, [x1, x20]\n"))?; // Load current character
-        
+
         // Check for newline or non-digit (end of number)
         write_line(output, format_args!("    cmp w2, #'\\n'\n"))?;
         write_line(output, format_args!("    b.eq .Lparse_done\n"))?;
@@ -233,21 +264,21 @@ impl Arm64Runtime {
         write_line(output, format_args!("    b.lt .Lparse_done\n"))?;
         write_line(output, format_args!("    cmp w2, #'9'\n"))?;
         write_line(output, format_args!("    b.gt .Lparse_done\n"))?;
-        
+
         // Convert character to digit and accumulate
         write_line(output, format_args!("    sub w2, w2, #'0'\n"))?; // Convert ASCII to digit
         write_line(output, format_args!("    mov x4, #10\n"))?;
-        write_line(output, format_args!("    mul x0, x0, x4\n"))?;   // result *= 10
-        write_line(output, format_args!("    add x0, x0, x2\n"))?;   // result += digit
+        write_line(output, format_args!("    mul x0, x0, x4\n"))?; // result *= 10
+        write_line(output, format_args!("    add x0, x0, x2\n"))?; // result += digit
         write_line(output, format_args!("    add x20, x20, #1\n"))?; // Move to next character
         write_line(output, format_args!("    b .Lparse_loop\n"))?;
-        
+
         // Apply negative sign if needed
         write_line(output, format_args!(".Lparse_done:\n"))?;
         write_line(output, format_args!("    cmp x21, #0\n"))?;
         write_line(output, format_args!("    b.eq .Lreturn\n"))?;
         write_line(output, format_args!("    neg x0, x0\n"))?;
-        
+
         // Restore registers and return
         write_line(output, format_args!(".Lreturn:\n"))?;
         write_line(output, format_args!("    ldr x21, [sp], #16\n"))?;
@@ -265,25 +296,25 @@ impl Arm64Runtime {
         write_line(output, format_args!("    stp x29, x30, [sp, #-16]!\n"))?;
         write_line(output, format_args!("    mov x29, sp\n"))?;
         write_line(output, format_args!("    stp x19, x20, [sp, #-16]!\n"))?;
-        
+
         // x0 contains pointer to null-terminated string
         write_line(output, format_args!("    mov x19, x0\n"))?; // Save string pointer
-        
+
         // Calculate string length
-        write_line(output, format_args!("    mov x1, x0\n"))?;  // Copy string pointer to x1
-        write_line(output, format_args!("    mov x2, #0\n"))?;  // Length counter
+        write_line(output, format_args!("    mov x1, x0\n"))?; // Copy string pointer to x1
+        write_line(output, format_args!("    mov x2, #0\n"))?; // Length counter
         write_line(output, format_args!("1:\n"))?;
         write_line(output, format_args!("    ldrb w3, [x1, x2]\n"))?; // Load byte
-        write_line(output, format_args!("    cbz w3, 2f\n"))?;  // If null terminator, exit loop
+        write_line(output, format_args!("    cbz w3, 2f\n"))?; // If null terminator, exit loop
         write_line(output, format_args!("    add x2, x2, #1\n"))?; // Increment length
-        write_line(output, format_args!("    b 1b\n"))?;        // Continue loop
-        
+        write_line(output, format_args!("    b 1b\n"))?; // Continue loop
+
         write_line(output, format_args!("2:\n"))?;
         // Now x19 = string pointer, x2 = string length
         // System call: write(1, string, length)
-        write_line(output, format_args!("    mov x0, #1\n"))?;  // stdout
+        write_line(output, format_args!("    mov x0, #1\n"))?; // stdout
         write_line(output, format_args!("    mov x1, x19\n"))?; // string pointer
-        // x2 already contains length
+                                                                // x2 already contains length
         write_line(
             output,
             format_args!("    movz x16, #(0x2000004 & 0xFFFF)\n"),
@@ -293,7 +324,7 @@ impl Arm64Runtime {
             format_args!("    movk x16, #((0x2000004 >> 16) & 0xFFFF), lsl #16\n"),
         )?;
         write_line(output, format_args!("    svc #0\n"))?;
-        
+
         // Restore registers and return
         write_line(output, format_args!("    ldp x19, x20, [sp], #16\n"))?;
         write_line(output, format_args!("    ldp x29, x30, [sp], #16\n"))?;

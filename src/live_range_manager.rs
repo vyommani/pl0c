@@ -36,12 +36,20 @@ impl LiveRangeManager {
             return false;
         }
         let (start1, end1) = self.ranges.get(&v_reg).copied().unwrap_or((0, i32::MAX));
-        let (start2, end2) = self.ranges.get(&other_v_reg).copied().unwrap_or((0, i32::MAX));
+        let (start2, end2) = self
+            .ranges
+            .get(&other_v_reg)
+            .copied()
+            .unwrap_or((0, i32::MAX));
         end1 < start2 || end2 < start1
     }
 
     /// Filters next uses to include only those at or after the current instruction.
     pub fn filter_next_uses(&self, next_uses: &[i32]) -> Vec<i32> {
-        next_uses.iter().filter(|&&use1| use1 >= self.current_instruction).copied().collect()
+        next_uses
+            .iter()
+            .filter(|&&use1| use1 >= self.current_instruction)
+            .copied()
+            .collect()
     }
 }

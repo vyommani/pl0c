@@ -1,12 +1,12 @@
 // src/code_emitter.rs
-use crate::register_allocator_common::RegisterError;
 use crate::register_allocator_arm64::RegisterName;
+use crate::register_allocator_common::RegisterError;
 
 pub trait CodeEmitter {
     // Generic instruction emission
     fn emit(&mut self, instruction: &str) -> Result<(), RegisterError>;
     fn flush(&mut self) -> Result<(), RegisterError>;
-    
+
     // IR-specific instructions
     fn emit_li(&mut self, dest: &str, value: &str) -> Result<(), RegisterError>;
     fn emit_ld(&mut self, dest: &str, src: &str) -> Result<(), RegisterError>;
@@ -34,14 +34,24 @@ pub trait CodeEmitter {
     fn emit_proc_exit(&mut self) -> Result<(), RegisterError>;
     fn emit_const(&mut self, id: &str, num: &str) -> Result<(), RegisterError>;
     fn emit_var(&mut self, name: &str) -> Result<(), RegisterError>;
-    
+
     // Assembly-specific instructions (for ARM64)
     fn emit_str(&mut self, reg: &RegisterName, offset: i32) -> Result<(), RegisterError>;
     fn emit_ldr(&mut self, reg: &RegisterName, offset: i32) -> Result<(), RegisterError>;
     fn emit_stp(&mut self, reg: &RegisterName) -> Result<(), RegisterError>;
     fn emit_mov(&mut self, dest: &RegisterName, src: &RegisterName) -> Result<(), RegisterError>;
-    fn emit_add_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Result<(), RegisterError>;
-    fn emit_sub_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Result<(), RegisterError>;
+    fn emit_add_asm(
+        &mut self,
+        dest: &RegisterName,
+        src1: &RegisterName,
+        src2: &RegisterName,
+    ) -> Result<(), RegisterError>;
+    fn emit_sub_asm(
+        &mut self,
+        dest: &RegisterName,
+        src1: &RegisterName,
+        src2: &RegisterName,
+    ) -> Result<(), RegisterError>;
     fn emit_ret(&mut self) -> Result<(), RegisterError>;
     fn emit_bl(&mut self, label: &str) -> Result<(), RegisterError>;
     fn emit_b(&mut self, label: &str) -> Result<(), RegisterError>;
@@ -195,11 +205,21 @@ impl<'a> CodeEmitter for StringCodeEmitter<'a> {
         self.emit(&format!("mov {}, {}", dest, src))
     }
 
-    fn emit_add_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Result<(), RegisterError> {
+    fn emit_add_asm(
+        &mut self,
+        dest: &RegisterName,
+        src1: &RegisterName,
+        src2: &RegisterName,
+    ) -> Result<(), RegisterError> {
         self.emit(&format!("add {}, {}, {}", dest, src1, src2))
     }
 
-    fn emit_sub_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Result<(), RegisterError> {
+    fn emit_sub_asm(
+        &mut self,
+        dest: &RegisterName,
+        src1: &RegisterName,
+        src2: &RegisterName,
+    ) -> Result<(), RegisterError> {
         self.emit(&format!("sub {}, {}, {}", dest, src1, src2))
     }
 

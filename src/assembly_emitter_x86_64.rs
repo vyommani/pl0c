@@ -1,9 +1,9 @@
+use crate::ir_dispatch::IROp;
 use crate::{
     assembly_generator::{AssemblyEmitter, RegisterAllocator},
     register_allocator_common::Register,
     register_allocator_x86_64::RegisterName,
 };
-use crate::ir_dispatch::IROp;
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
@@ -26,7 +26,11 @@ impl StackAnalyzer {
 
         for line in ir {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with("var ") || line.starts_with("const ") {
+            if line.is_empty()
+                || line.starts_with('#')
+                || line.starts_with("var ")
+                || line.starts_with("const ")
+            {
                 continue;
             }
             if line.ends_with(':') {
@@ -35,7 +39,10 @@ impl StackAnalyzer {
                     in_proc = false;
                     continue;
                 }
-                let next_line = ir.get(ir.iter().position(|l| l == line).unwrap() + 1).map(|s| s.trim()).unwrap_or("");
+                let next_line = ir
+                    .get(ir.iter().position(|l| l == line).unwrap() + 1)
+                    .map(|s| s.trim())
+                    .unwrap_or("");
                 if next_line.starts_with("proc_enter") {
                     in_proc = true;
                     current_proc = Some(label.to_string());
@@ -66,7 +73,10 @@ impl StackAnalyzer {
                 }
             }
         }
-        StackAnalyzer { main_stack_vars, proc_stack_vars }
+        StackAnalyzer {
+            main_stack_vars,
+            proc_stack_vars,
+        }
     }
 }
 
@@ -77,17 +87,39 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
     ) -> Result<(), io::Error> {
-        let (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings) = Self::collect_data_info(ir);
+        let (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings) =
+            Self::collect_data_info(ir);
         let mut data_output = String::new();
-        Self::emit_data_section(&mut data_output, &variables, &constants, &strings, needs_write_int, needs_write_str)?;
+        Self::emit_data_section(
+            &mut data_output,
+            &variables,
+            &constants,
+            &strings,
+            needs_write_int,
+            needs_write_str,
+        )?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
         let stack_analyzer = StackAnalyzer::new(ir);
-        self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output, &stack_analyzer, &constants,&strings)?;
+        self.process_ir_lines(
+            ir,
+            allocator,
+            &mut proc_output,
+            &mut main_output,
+            &stack_analyzer,
+            &constants,
+            &strings,
+        )?;
         let new_main_output = Self::emit_main_section(&main_output, &stack_analyzer)?;
         let mut footer = String::new();
-        self.emit_footer_conditional(&mut footer, needs_write_int, needs_read_int, needs_write_str)?;
-        let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
+        self.emit_footer_conditional(
+            &mut footer,
+            needs_write_int,
+            needs_read_int,
+            needs_write_str,
+        )?;
+        let final_output =
+            Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
         output.push_str(&final_output);
         Ok(())
     }
@@ -111,11 +143,12 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
             }
         }
         for (i, (vreg, uses)) in vreg_uses.into_iter().enumerate() {
-            let live_range = if let (Some(&first), Some(&last)) = (uses.iter().min(), uses.iter().max()) {
-                (first as i32, last as i32)
-            } else {
-                (0, 0)
-            };
+            let live_range =
+                if let (Some(&first), Some(&last)) = (uses.iter().min(), uses.iter().max()) {
+                    (first as i32, last as i32)
+                } else {
+                    (0, 0)
+                };
             let reg = Register::new(
                 usize::MAX,
                 i,
@@ -125,8 +158,8 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
             );
             if let Some(alloc) = allocator
                 .as_any_mut()
-                .downcast_mut::<crate::register_allocator_x86_64::X86_64RegisterAllocator>()
-            {
+                .downcast_mut::<crate::register_allocator_x86_64::X86_64RegisterAllocator>(
+            ) {
                 alloc.vreg_map.insert(vreg, reg);
             }
         }
@@ -135,7 +168,9 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
 }
 
 impl X86_64AssemblyEmitter {
-    fn collect_data_info(ir: &[String]) -> (
+    fn collect_data_info(
+        ir: &[String],
+    ) -> (
         HashSet<String>,
         HashMap<String, String>,
         bool,
@@ -187,7 +222,14 @@ impl X86_64AssemblyEmitter {
                 }
             }
         }
-        (used_vars, constants, needs_write_int, needs_read_int, needs_write_str, strings)
+        (
+            used_vars,
+            constants,
+            needs_write_int,
+            needs_read_int,
+            needs_write_str,
+            strings,
+        )
     }
 
     fn emit_data_section(
@@ -383,7 +425,12 @@ impl X86_64AssemblyEmitter {
             IROp::ProcEnter => {
                 *in_proc = true;
                 Self::emit_prologue(output, stack_analyzer)?;
-                let size = rest.get(0).unwrap_or(&"0").trim_end_matches(',').parse::<u32>().unwrap_or(0);
+                let size = rest
+                    .get(0)
+                    .unwrap_or(&"0")
+                    .trim_end_matches(',')
+                    .parse::<u32>()
+                    .unwrap_or(0);
                 if size > 0 {
                     output.push_str(&format!("    sub rsp, {}\n", size));
                 }
@@ -468,7 +515,7 @@ impl X86_64AssemblyEmitter {
     }
 
     fn emit_epilogue(output: &mut String) -> io::Result<()> {
-        output.push_str("    pop r15\n");   // Restore callee-saved registers
+        output.push_str("    pop r15\n"); // Restore callee-saved registers
         output.push_str("    pop r14\n");
         output.push_str("    pop r13\n");
         output.push_str("    mov rax, 0\n");
@@ -504,15 +551,19 @@ impl X86_64AssemblyEmitter {
         strings: &[String],
     ) -> io::Result<()> {
         let str_clean = src.trim_matches(|c| c == ',' || c == '"' || c == '\'');
-        let label = strings.iter().position(|s| s == str_clean).map(|i| format!("string_{}", i)).unwrap_or_else(|| {
-            eprintln!("Warning: String '{}' not found in data section", str_clean);
-            str_clean.to_string()
-        });
+        let label = strings
+            .iter()
+            .position(|s| s == str_clean)
+            .map(|i| format!("string_{}", i))
+            .unwrap_or_else(|| {
+                eprintln!("Warning: String '{}' not found in data section", str_clean);
+                str_clean.to_string()
+            });
         output.push_str(&format!("    mov rdi, {}\n", label));
         output.push_str("    call write_str\n");
         Ok(())
     }
-    
+
     fn emit_footer_conditional(
         &self,
         output: &mut String,
@@ -697,7 +748,7 @@ impl X86_64AssemblyEmitter {
         output.push_str("    ret\n");
         Ok(())
     }
-    
+
     fn emit_li(
         &self,
         rest: &[&str],
@@ -728,7 +779,12 @@ impl X86_64AssemblyEmitter {
 
     fn format_stack_addr(addr: &str) -> String {
         if addr.starts_with("bp-") || addr.starts_with("rbp-") {
-            let offset = addr.split('-').nth(1).unwrap_or("0").parse::<u32>().unwrap_or(0);
+            let offset = addr
+                .split('-')
+                .nth(1)
+                .unwrap_or("0")
+                .parse::<u32>()
+                .unwrap_or(0);
             format!("[rbp - {}]", offset)
         } else {
             format!("[{}]", addr)
@@ -776,18 +832,26 @@ impl X86_64AssemblyEmitter {
             .ensure(src, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if constants.contains_key(dst) {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("Cannot store to constant: {}", dst)));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Cannot store to constant: {}", dst),
+            ));
         }
         let dst_addr = if dst.starts_with("bp-") || dst.starts_with("rbp-") {
             Self::format_stack_addr(dst)
         } else {
             Self::format_global_addr(dst)
         };
-        let src_is_mem = src.starts_with("bp-") || src.starts_with("rbp-") || (src.starts_with('[') && src.ends_with(']'));
+        let src_is_mem = src.starts_with("bp-")
+            || src.starts_with("rbp-")
+            || (src.starts_with('[') && src.ends_with(']'));
         if src_is_mem {
             let src_clean = Self::strip_brackets(src);
             if constants.contains_key(src_clean) {
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Cannot load from constant as memory: {}", src_clean)));
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Cannot load from constant as memory: {}", src_clean),
+                ));
             }
             let src_addr = if src_clean.starts_with("bp-") || src_clean.starts_with("rbp-") {
                 Self::format_stack_addr(src_clean)
@@ -823,11 +887,11 @@ impl X86_64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-    
+
         let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
         let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
         let pdst_name = RegisterName::from_usize(pdst).unwrap();
-    
+
         let op_str = match op {
             "add" => "add",
             "sub" => "sub",
@@ -838,23 +902,26 @@ impl X86_64AssemblyEmitter {
                 return Ok(());
             }
         };
-    
+
         if op == "idiv" || op == "mod" {
             output.push_str(&format!("    mov rax, {}\n", psrc1_name));
             output.push_str("    cqo\n");
             output.push_str(&format!("    idiv {}\n", psrc2_name));
-            output.push_str(&format!("    mov {}, {}\n", pdst_name, if op == "mod" { "rdx" } else { "rax" }));
+            output.push_str(&format!(
+                "    mov {}, {}\n",
+                pdst_name,
+                if op == "mod" { "rdx" } else { "rax" }
+            ));
         } else {
             output.push_str(&format!("    mov {}, {}\n", pdst_name, psrc1_name));
             output.push_str(&format!("    {} {}, {}\n", op_str, pdst_name, psrc2_name));
         }
-    
+
         self.free_if_dead(src1, idx, psrc1, allocator);
         self.free_if_dead(src2, idx, psrc2, allocator);
         self.free_if_dead(dst, idx, pdst, allocator);
         Ok(())
     }
-    
 
     fn emit_relational(
         &self,

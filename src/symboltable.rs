@@ -30,7 +30,13 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn new(symbol_type: SymbolType, line_number: usize, location: SymbolLocation, is_global: bool, level: usize) -> Self {
+    pub fn new(
+        symbol_type: SymbolType,
+        line_number: usize,
+        location: SymbolLocation,
+        is_global: bool,
+        level: usize,
+    ) -> Self {
         Self {
             symbol_type,
             line_number,
@@ -78,10 +84,12 @@ impl SymbolTable {
         None
     }
 
-   pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
+    pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
         // Search from innermost to outermost, but only up to the given lexical level
         for (scope_idx, scope) in self.scopes.iter().enumerate().rev() {
-            if scope_idx > level { continue; }
+            if scope_idx > level {
+                continue;
+            }
             if let Some(symbol) = scope.get(name) {
                 return Some(symbol);
             }

@@ -252,9 +252,9 @@ fn print_stats(stats: &CompilationStats) {
 }
 
 fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
-    use std::process::Command;
-    use std::path::Path;
     use std::fs;
+    use std::path::Path;
+    use std::process::Command;
     let os_name = std::env::consts::OS;
     let obj_file = "output.o";
     let as_status;
@@ -265,8 +265,10 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("On macOS, only x86_64 and arm64 architectures are supported.");
         }
         as_status = Command::new("as")
-            .arg("-arch").arg(arch)
-            .arg("-o").arg(obj_file)
+            .arg("-arch")
+            .arg(arch)
+            .arg("-o")
+            .arg(obj_file)
             .arg(asm_file)
             .status();
         if let Err(e) = &as_status {
@@ -276,10 +278,13 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("Assembler failed.");
         }
         link_status = Command::new("clang")
-            .arg("-arch").arg(arch)
-            .arg("-o").arg(exe_file)
+            .arg("-arch")
+            .arg(arch)
+            .arg("-o")
+            .arg(exe_file)
             .arg(obj_file)
-            .arg("-e").arg("_start")
+            .arg("-e")
+            .arg("_start")
             .status();
         if let Err(e) = &link_status {
             fatal(&format!("Failed to invoke linker: {}", e));
@@ -293,9 +298,11 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("On Linux, only x86_64 architecture is supported.");
         }
         as_status = Command::new("nasm")
-            .arg("-f").arg("elf64")
+            .arg("-f")
+            .arg("elf64")
             .arg(asm_file)
-            .arg("-o").arg(obj_file)
+            .arg("-o")
+            .arg(obj_file)
             .status();
         if let Err(e) = &as_status {
             fatal(&format!("Failed to invoke assembler: {}", e));
@@ -305,7 +312,8 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
         }
         link_status = Command::new("ld")
             .arg(obj_file)
-            .arg("-o").arg(exe_file)
+            .arg("-o")
+            .arg(exe_file)
             .status();
         if let Err(e) = &link_status {
             fatal(&format!("Failed to invoke linker: {}", e));
