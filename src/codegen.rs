@@ -457,7 +457,7 @@ impl IRGenerator {
     }
 
     // Emit all procedures at the top level (no nesting in IR)
-    fn emit_procedures_recursively(&mut self, block: &Block) -> Result<(), RegisterError> {
+    fn emit_procedures(&mut self, block: &Block) -> Result<(), RegisterError> {
         let mut all_procedures = Vec::new();
         self.collect_all_procedures(block, &mut all_procedures);
         for (name, proc_block) in all_procedures {
@@ -569,9 +569,7 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_variable(&mut self, variable: &Variable) -> Result<String, String> {
-        // Use the optimized variable loading and ensure the register is properly tracked
         let vreg = self.get_or_load_variable(&variable.name)?;
-        // The register is already allocated and tracked, so we don't need to do anything else
         Ok(vreg)
     }
 
@@ -822,7 +820,7 @@ impl ASTVisitor for IRGenerator {
         // Recursively emit all procedures at the top level
         if !self.in_procedure {
             let original_scope_level = self.current_scope_level;
-            self.emit_procedures_recursively(block)
+            self.emit_procedures(block)
                 .map_err(|e| e.to_string())?;
             self.current_scope_level = original_scope_level;
         }
