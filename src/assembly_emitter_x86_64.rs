@@ -584,9 +584,6 @@ impl X86_64AssemblyEmitter {
     }
 
     fn emit_write_int_routine(&self, output: &mut String) -> io::Result<()> {
-        //output.push_str("section .data\n");
-        //output.push_str("    digitSpace times 20 db 0\n");
-        //output.push_str("    newline db 0xA\n");
         output.push_str("section .text\n");
         output.push_str("write_int:\n");
         output.push_str("    push rbp\n");
@@ -597,10 +594,12 @@ impl X86_64AssemblyEmitter {
         output.push_str("    push rdx\n");
         output.push_str("    push rcx\n");
         output.push_str("    push r8\n");
+        output.push_str("    push r9\n"); // Save r9 (used as digit counter)
         output.push_str("    mov rax, rdi\n");
         output.push_str("    mov rsi, digitSpace + 19\n");
         output.push_str("    mov rcx, 10\n");
-        output.push_str("    mov r8, 0\n");
+        output.push_str("    mov r8, 0\n"); // Flag for negative number
+        output.push_str("    mov r9, 0\n"); // Initialize digit counter
         output.push_str("    cmp rax, 0\n");
         output.push_str("    jne .check_negative\n");
         output.push_str("    mov byte [rsi], '0'\n");
@@ -617,22 +616,23 @@ impl X86_64AssemblyEmitter {
         output.push_str(".check_negative:\n");
         output.push_str("    jge .convert_loop\n");
         output.push_str("    neg rax\n");
-        output.push_str("    mov r8, 1\n");
+        output.push_str("    mov r8, 1\n"); // Set negative flag
         output.push_str(".convert_loop:\n");
         output.push_str("    xor rdx, rdx\n");
         output.push_str("    div rcx\n");
         output.push_str("    add dl, '0'\n");
         output.push_str("    dec rsi\n");
         output.push_str("    mov [rsi], dl\n");
+        output.push_str("    inc r9\n"); // Increment digit counter
         output.push_str("    test rax, rax\n");
         output.push_str("    jnz .convert_loop\n");
         output.push_str("    cmp r8, 0\n");
         output.push_str("    je .print\n");
         output.push_str("    dec rsi\n");
         output.push_str("    mov byte [rsi], '-'\n");
+        output.push_str("    inc r9\n"); // Include '-' in count
         output.push_str(".print:\n");
-        output.push_str("    mov rdx, digitSpace + 20\n");
-        output.push_str("    sub rdx, rsi\n");
+        output.push_str("    mov rdx, r9\n"); // Use digit count for write length
         output.push_str("    mov rax, 1\n");
         output.push_str("    mov rdi, 1\n");
         output.push_str("    syscall\n");
@@ -642,6 +642,7 @@ impl X86_64AssemblyEmitter {
         output.push_str("    mov rdx, 1\n");
         output.push_str("    syscall\n");
         output.push_str(".done:\n");
+        output.push_str("    pop r9\n");
         output.push_str("    pop r8\n");
         output.push_str("    pop rcx\n");
         output.push_str("    pop rdx\n");
