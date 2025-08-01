@@ -15,14 +15,18 @@ pub struct X86_64AssemblyEmitter;
 struct StackAnalyzer {
     main_stack_vars: HashSet<String>,
     proc_stack_vars: HashMap<String, HashSet<String>>,
+    used_callee_saved: HashSet<usize>, // Store register indices (12–15 for r12–r15)
 }
 
 impl StackAnalyzer {
-    fn new(ir: &[String]) -> Self {
+    fn new(ir: &[String], allocator: &mut dyn RegisterAllocator) -> Self {
         let mut main_stack_vars = HashSet::new();
         let mut proc_stack_vars = HashMap::new();
+        let mut used_callee_saved = HashSet::new();
         let mut current_proc = None;
         let mut in_proc = false;
+
+        let vreg_regex = Regex::new(r"v[0-9]+\b").unwrap();
 
         for line in ir {
             let line = line.trim();
@@ -37,10 +41,13 @@ impl StackAnalyzer {
                 let label = &line[..line.len() - 1];
                 if label == "main" {
                     in_proc = false;
+                    current_proc = None;
                     continue;
                 }
                 let next_line = ir
-                    .get(ir.iter().position(|l| l == line).unwrap() + 1)
+                    .iter()
+                    .position(|l| l == line)
+                    .and_then(|i| ir.get(i + 1))
                     .map(|s| s.trim())
                     .unwrap_or("");
                 if next_line.starts_with("proc_enter") {
@@ -49,25 +56,35 @@ impl StackAnalyzer {
                 }
                 continue;
             }
-            if line.contains("[bp-") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.is_empty() {
-                    continue;
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+            if parts[0] == "st" || parts[0] == "ld" {
+                for part in &parts {
+                    if part.contains("[bp-") || part.contains("[up-") {
+                        let var_clean = X86_64AssemblyEmitter::strip_brackets(part);
+                        if in_proc {
+                            proc_stack_vars
+                                .entry(current_proc.clone().unwrap_or_default())
+                                .or_insert_with(HashSet::new)
+                                .insert(var_clean.to_string());
+                        } else {
+                            main_stack_vars.insert(var_clean.to_string());
+                        }
+                        if part.contains("[up-") {
+                            used_callee_saved.insert(12); // r12 for static link
+                        }
+                    }
                 }
-                // Check if the instruction is 'st' or 'ld'
-                if parts[0] == "st" || parts[0] == "ld" {
-                    // Look for stack variable references in the instruction
-                    for part in &parts {
-                        if part.contains("[bp-") {
-                            let var_clean = X86_64AssemblyEmitter::strip_brackets(part);
-                            if in_proc {
-                                proc_stack_vars
-                                    .entry(current_proc.clone().unwrap_or_default())
-                                    .or_insert_with(HashSet::new)
-                                    .insert(var_clean.to_string());
-                            } else {
-                                main_stack_vars.insert(var_clean.to_string());
-                            }
+            }
+            // Track virtual registers (v0–v8)
+            for cap in vreg_regex.captures_iter(line) {
+                let vreg = cap.get(0).unwrap().as_str();
+                if let Some(reg_any) = allocator.get_vreg(vreg) {
+                    if let Some(reg) = reg_any.downcast_ref::<Register<RegisterName>>() {
+                        if (12..=15).contains(&reg.p_reg) {
+                            used_callee_saved.insert(reg.p_reg);
                         }
                     }
                 }
@@ -76,7 +93,12 @@ impl StackAnalyzer {
         StackAnalyzer {
             main_stack_vars,
             proc_stack_vars,
+            used_callee_saved,
         }
+    }
+
+    pub fn get_used_callee_saved(&self) -> &HashSet<usize> {
+        &self.used_callee_saved
     }
 }
 
@@ -100,7 +122,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         )?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
-        let stack_analyzer = StackAnalyzer::new(ir);
+        let stack_analyzer = StackAnalyzer::new(ir, allocator);
         self.process_ir_lines(
             ir,
             allocator,
@@ -385,7 +407,7 @@ impl X86_64AssemblyEmitter {
         new_main_output.push_str("main:\n");
         Self::emit_prologue(&mut new_main_output, stack_analyzer)?;
         new_main_output.push_str(main_output);
-        Self::emit_epilogue(&mut new_main_output)?;
+        Self::emit_epilogue(&mut new_main_output,stack_analyzer)?;
         Ok(new_main_output)
     }
 
@@ -436,7 +458,7 @@ impl X86_64AssemblyEmitter {
                 }
             }
             IROp::ProcExit => {
-                Self::emit_epilogue(output)?;
+                Self::emit_epilogue(output, stack_analyzer)?;
                 *in_proc = false;
             }
             IROp::Exit => {}
@@ -506,20 +528,36 @@ impl X86_64AssemblyEmitter {
     fn emit_prologue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
-        let stack_size = stack_analyzer.main_stack_vars.len() as u32 * 8;
-        output.push_str(&format!("    sub rsp, {}\n", stack_size.max(16))); // Ensure at least 16 bytes
-        output.push_str("    push r13\n");
-        output.push_str("    push r14\n");
-        output.push_str("    push r15\n");
+        // Calculate stack size: 8 bytes per variable + 8 for static link
+        let stack_size = if stack_analyzer.main_stack_vars.is_empty() {
+            stack_analyzer
+                .proc_stack_vars
+                .values()
+                .map(|vars| vars.len() as u32 * 8)
+                .max()
+                .unwrap_or(0) + 8 // Static link
+        } else {
+            stack_analyzer.main_stack_vars.len() as u32 * 8 + 8 // Static link
+        };
+        let aligned_size = (stack_size + 15) & !15; // Align to 16 bytes
+        output.push_str(&format!("    sub rsp, {}\n", aligned_size));
+        output.push_str("    mov [rbp - 8], r12 ; Store static link\n");
+        let used_callee_saved = stack_analyzer.get_used_callee_saved();
+        for reg in used_callee_saved {
+            output.push_str(&format!("    push r{}\n", reg));
+        }
         Ok(())
     }
 
-    fn emit_epilogue(output: &mut String) -> io::Result<()> {
-        output.push_str("    pop r15\n"); // Restore callee-saved registers
-        output.push_str("    pop r14\n");
-        output.push_str("    pop r13\n");
-        output.push_str("    mov rax, 0\n");
-        output.push_str("    leave\n");
+    fn emit_epilogue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
+        let used_callee_saved: Vec<_> = stack_analyzer.get_used_callee_saved().into_iter().collect();
+        let mut sorted_regs = used_callee_saved;
+        sorted_regs.sort_by(|a, b| b.cmp(a)); // Restore in reverse order
+        for reg in sorted_regs {
+            output.push_str(&format!("    pop r{}\n", reg));
+        }
+        output.push_str("    mov rsp, rbp\n");
+        output.push_str("    pop rbp\n");
         output.push_str("    ret\n");
         Ok(())
     }
@@ -806,14 +844,32 @@ impl X86_64AssemblyEmitter {
         let pdst = allocator
             .alloc(dst, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let src_addr = if constants.contains_key(src) {
-            format!("[{}]", src) // Load constant from .data section
-        } else if src.starts_with("bp-") || src.starts_with("rbp-") {
-            Self::format_stack_addr(src)
+
+        if src.starts_with("bp-") {
+            let offset = src[3..].parse::<i32>().unwrap_or(0);
+            output.push_str(&format!("    mov r{}, [rbp - {}]\n", pdst, offset));
+        } else if src.starts_with("up-") {
+            let parts: Vec<&str> = src[3..].split('-').collect();
+            if parts.len() != 2 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Invalid up-<offset>-<distance> format",
+                ));
+            }
+            let offset = parts[0].parse::<i32>().unwrap_or(0);
+            let distance = parts[1].parse::<usize>().unwrap_or(0);
+            let temp_reg = 11; // r11: caller-saved
+            output.push_str(&format!("    mov r{}, rbp\n", temp_reg));
+            for _ in 0..distance {
+                output.push_str(&format!("    mov r{}, [r{} - 8]\n", temp_reg, temp_reg));
+            }
+            output.push_str(&format!("    mov r{}, [r{} - {}]\n", pdst, temp_reg, offset));
+        } else if constants.contains_key(src) {
+            output.push_str(&format!("    mov r{}, [{}]\n", pdst, src));
         } else {
-            Self::format_global_addr(src)
-        };
-        output.push_str(&format!("    mov r{}, {}\n", pdst, src_addr));
+            output.push_str(&format!("    mov r{}, [{}]\n", pdst, src));
+        }
+
         self.free_if_dead(dst, idx, pdst, allocator);
         Ok(())
     }
@@ -832,38 +888,46 @@ impl X86_64AssemblyEmitter {
         let psrc = allocator
             .ensure(src, output)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
         if constants.contains_key(dst) {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Cannot store to constant: {}", dst),
             ));
         }
-        let dst_addr = if dst.starts_with("bp-") || dst.starts_with("rbp-") {
-            Self::format_stack_addr(dst)
-        } else {
-            Self::format_global_addr(dst)
-        };
-        let src_is_mem = src.starts_with("bp-")
-            || src.starts_with("rbp-")
-            || (src.starts_with('[') && src.ends_with(']'));
-        if src_is_mem {
-            let src_clean = Self::strip_brackets(src);
-            if constants.contains_key(src_clean) {
+
+        if dst.starts_with("bp-") {
+            let mut offset = dst[3..].parse::<i32>().unwrap_or(0);
+            if offset == 8 {
+                // Remap [bp-8] to [bp-16] for local variable in procedure b
+                offset = 16;
+            } else if offset <= 8 {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
-                    format!("Cannot load from constant as memory: {}", src_clean),
+                    format!("Invalid store to reserved stack slot: {}", dst),
                 ));
             }
-            let src_addr = if src_clean.starts_with("bp-") || src_clean.starts_with("rbp-") {
-                Self::format_stack_addr(src_clean)
-            } else {
-                Self::format_global_addr(src_clean)
-            };
-            output.push_str(&format!("    mov rax, {}\n", src_addr));
-            output.push_str(&format!("    mov {}, rax\n", dst_addr));
+            output.push_str(&format!("    mov [rbp - {}], r{}\n", offset, psrc));
+        } else if dst.starts_with("up-") {
+            let parts: Vec<&str> = dst[3..].split('-').collect();
+            if parts.len() != 2 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Invalid up-<offset>-<distance> format",
+                ));
+            }
+            let offset = parts[0].parse::<i32>().unwrap_or(0);
+            let distance = parts[1].parse::<usize>().unwrap_or(0);
+            let temp_reg = 11; // r11: caller-saved
+            output.push_str(&format!("    mov r{}, rbp\n", temp_reg));
+            for _ in 0..distance {
+                output.push_str(&format!("    mov r{}, [r{} - 8]\n", temp_reg, temp_reg));
+            }
+            output.push_str(&format!("    mov [r{} - {}], r{}\n", temp_reg, offset, psrc));
         } else {
-            output.push_str(&format!("    mov {}, r{}\n", dst_addr, psrc));
+            output.push_str(&format!("    mov [{}], r{}\n", dst, psrc));
         }
+
         self.free_if_dead(src, idx, psrc, allocator);
         Ok(())
     }
@@ -1032,6 +1096,8 @@ impl X86_64AssemblyEmitter {
         output: &mut String,
     ) -> io::Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
+        output.push_str("    mov r12, rbp ; Pass static link\n");
+        output.push_str("    and rsp, -16 ; Align stack to 16 bytes\n");
         output.push_str(&format!("    call {}\n", label));
         Ok(())
     }
