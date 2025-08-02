@@ -939,7 +939,7 @@ impl Arm64AssemblyEmitter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn emit_ir_instruction_arm64(
+    fn emit_instructions(
         &self,
         op: IROp,
         op_str: &str,
@@ -1051,7 +1051,7 @@ impl Arm64AssemblyEmitter {
                     *current_proc = Some(proc_stack.last().unwrap().clone());
                 }
             }
-            _ => self.emit_ir_instruction_arm64(
+            _ => self.emit_instructions(
                 op,
                 op_str,
                 rest,
