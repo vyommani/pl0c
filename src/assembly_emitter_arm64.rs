@@ -401,7 +401,7 @@ impl Arm64AssemblyEmitter {
             } else {
                 &mut *main_output
             };
-            self.emit_ir_instruction_arm64_with_stack(
+            self.emit_instruction_with_stack(
                 op,
                 op_str,
                 &rest,
@@ -1000,7 +1000,7 @@ impl Arm64AssemblyEmitter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn emit_ir_instruction_arm64_with_stack(
+    fn emit_instruction_with_stack(
         &self,
         op: IROp,
         op_str: &str,
