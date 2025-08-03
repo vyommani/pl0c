@@ -79,7 +79,7 @@ pub mod parser {
         let is_reserved = RESERVED_KEYWORDS.contains(name);
         let renamed = if is_reserved {
             if is_global {
-                format!("@{}", name)
+                format!("_{}", name)
             } else {
                 format!("%{}", name)
             }
