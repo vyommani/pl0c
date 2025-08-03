@@ -228,12 +228,9 @@ impl X86_64AssemblyEmitter {
                 needs_read_int = true;
             } else if line.contains("write_str") {
                 needs_write_str = true;
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(str_label) = parts.get(1) {
-                    let str_clean = str_label.trim_matches(|c| c == ',' || c == '"' || c == '\'');
-                    if !str_clean.is_empty() && !strings.contains(&str_clean.to_string()) {
-                        strings.push(str_clean.to_string());
-                    }
+                let string = line[10..].trim_matches(|c| c == '"' || c == '\'').to_string();
+                if !string.is_empty() && !strings.contains(&string) {
+                    strings.push(string);
                 }
             } else {
                 for word in line.split_whitespace() {
@@ -245,7 +242,7 @@ impl X86_64AssemblyEmitter {
             }
         }
         (
-            used_vars,
+            variables,
             constants,
             needs_write_int,
             needs_read_int,
@@ -461,7 +458,7 @@ impl X86_64AssemblyEmitter {
                 Self::emit_epilogue(output, stack_analyzer)?;
                 *in_proc = false;
             }
-            IROp::Exit => {}
+            IROp::Exit => {self.emit_exit(output);}
             IROp::Li => self.emit_li(rest, idx, allocator, output, constants)?,
             IROp::Ld => self.emit_ld(rest, idx, allocator, output, constants)?,
             IROp::St => self.emit_st(rest, idx, allocator, output, constants)?,
@@ -491,7 +488,7 @@ impl X86_64AssemblyEmitter {
                 self.free_if_dead(dst, idx, pdst, allocator);
             }
             IROp::WriteStr => {
-                let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
+                let src = line[10..].trim_matches(|c| c == '"' || c == '\'');
                 self.emit_write_str_x86_64(src, idx, allocator, output, strings)?;
             }
             IROp::Unknown => {
@@ -528,20 +525,24 @@ impl X86_64AssemblyEmitter {
     fn emit_prologue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
-        // Calculate stack size: 8 bytes per variable + 8 for static link
+        // Calculate stack size: 8 bytes per variable + 8 for static link if needed
         let stack_size = if stack_analyzer.main_stack_vars.is_empty() {
             stack_analyzer
                 .proc_stack_vars
                 .values()
                 .map(|vars| vars.len() as u32 * 8)
                 .max()
-                .unwrap_or(0) + 8 // Static link
+                .unwrap_or(0) + if stack_analyzer.used_callee_saved.contains(&12) { 8 } else { 0 }
         } else {
-            stack_analyzer.main_stack_vars.len() as u32 * 8 + 8 // Static link
+            stack_analyzer.main_stack_vars.len() as u32 * 8 + if stack_analyzer.used_callee_saved.contains(&12) { 8 } else { 0 }
         };
         let aligned_size = (stack_size + 15) & !15; // Align to 16 bytes
-        output.push_str(&format!("    sub rsp, {}\n", aligned_size));
-        output.push_str("    mov [rbp - 8], r12 ; Store static link\n");
+        if aligned_size > 0 {
+            output.push_str(&format!("    sub rsp, {}\n", aligned_size));
+        }
+        if stack_analyzer.used_callee_saved.contains(&12) {
+            output.push_str("    mov [rbp - 8], r12 ; Store static link\n");
+        }
         let used_callee_saved = stack_analyzer.get_used_callee_saved();
         for reg in used_callee_saved {
             output.push_str(&format!("    push r{}\n", reg));
@@ -846,7 +847,15 @@ impl X86_64AssemblyEmitter {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         if src.starts_with("bp-") {
-            let offset = src[3..].parse::<i32>().unwrap_or(0);
+            let mut offset = src[3..].parse::<i32>().unwrap_or(0);
+            if offset == 8 {
+                offset = 16;
+            } else if offset <= 8 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Invalid load from reserved stack slot: {}", src),
+                ));
+            }
             output.push_str(&format!("    mov r{}, [rbp - {}]\n", pdst, offset));
         } else if src.starts_with("up-") {
             let parts: Vec<&str> = src[3..].split('-').collect();
