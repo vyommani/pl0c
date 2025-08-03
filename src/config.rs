@@ -53,9 +53,49 @@ pub mod register_allocation {
 
 // Parser and symbol table constants
 pub mod parser {
+    use lazy_static::lazy_static;
+    use std::collections::{HashMap, HashSet};
+
     /// Variable offset increment
     pub const VAR_OFFSET_INCREMENT: usize = 8;
     pub const INITIAL_LOCAL_OFFSET: usize = 8;
+
+    lazy_static! {
+        pub static ref RESERVED_KEYWORDS: HashSet<String> = [
+            "ret", "global", "mov", "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
+            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+            "mov", "ldr", "str", "b", "bl", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+            "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+            "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+            "x24", "x25", "x26", "x27", "x28", "x29", "x30", "sp", "lr", "fp",
+            "@", "%"
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    }
+
+    pub fn rename_identifier(name: &str, is_global: bool, mapped_identifiers: &mut HashMap<String, String>) -> String {
+        let is_reserved = RESERVED_KEYWORDS.contains(name);
+        let renamed = if is_reserved {
+            if is_global {
+                format!("@{}", name)
+            } else {
+                format!("%{}", name)
+            }
+        } else {
+            name.to_string()
+        };
+        mapped_identifiers.insert(name.to_string(), renamed.clone());
+        renamed
+    }
+
+    pub fn get_renamed_identifier(original: &str, mapped_identifiers: &HashMap<String, String>) -> String {
+        mapped_identifiers
+            .get(original)
+            .cloned()
+            .unwrap_or_else(|| original.to_string())
+    }
 }
 
 // Code generation constants
