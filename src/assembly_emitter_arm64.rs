@@ -9,6 +9,7 @@ use crate::{
 use regex::Regex;
 use std::{
     collections::HashMap,
+    collections::HashSet,
     io::{self},
 };
 pub struct Arm64AssemblyEmitter;
@@ -239,13 +240,13 @@ impl Arm64AssemblyEmitter {
     fn collect_data_info(
         ir: &[String],
     ) -> (
-        std::collections::HashSet<String>,
-        std::collections::HashMap<String, String>,
+        HashSet<String>,
+        HashMap<String, String>,
         bool,
         bool,
     ) {
-        let mut variables = std::collections::HashSet::new();
-        let mut constants = std::collections::HashMap::new();
+        let mut variables = HashSet::new();
+        let mut constants = HashMap::new();
         let mut needs_write_int = false;
         let mut needs_read_int = false;
         for line in ir {
@@ -274,8 +275,8 @@ impl Arm64AssemblyEmitter {
     // Helper to emit data section
     fn emit_data_section(
         data_output: &mut String,
-        variables: &std::collections::HashSet<String>,
-        constants: &std::collections::HashMap<String, String>,
+        variables: &HashSet<String>,
+        constants: &HashMap<String, String>,
     ) -> std::io::Result<()> {
         for (name, value) in constants {
             write_line(data_output, format_args!(".equ {}, {}\n", name, value))?;
