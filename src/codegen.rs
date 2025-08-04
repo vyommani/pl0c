@@ -110,12 +110,7 @@ impl IRGenerator {
     // ---------------------------
     // Symbol Table Helpers
     // ---------------------------
-    fn get_symbol_with_type(
-        &self,
-        name: &str,
-        expected_type: SymbolType,
-        operation: &str,
-    ) -> Result<&Symbol, String> {
+    fn get_symbol_with_type(&self, name: &str, expected_type: SymbolType, operation: &str) -> Result<&Symbol, String> {
         let symbol = self
             .symbol_table
             .get(name)
@@ -171,12 +166,7 @@ impl IRGenerator {
     // IR Emission Helpers
     // ---------------------------
     // Helper function to generate load instruction based on symbol location
-    fn emit_load_from_symbol(
-        &mut self,
-        symbol: &Symbol,
-        target_vreg: &str,
-        fallback_name: &str,
-    ) -> Result<(), RegisterError> {
+    fn emit_load_from_symbol(&mut self, symbol: &Symbol, target_vreg: &str, fallback_name: &str) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         let distance = if self.current_scope_level > symbol.level {
             self.current_scope_level - symbol.level
@@ -198,12 +188,7 @@ impl IRGenerator {
     }
 
     // Helper function to generate store instruction based on symbol location
-    fn emit_store_to_symbol(
-        &mut self,
-        symbol: &Symbol,
-        source_vreg: &str,
-        fallback_name: &str,
-    ) -> Result<(), RegisterError> {
+    fn emit_store_to_symbol(&mut self, symbol: &Symbol, source_vreg: &str, fallback_name: &str) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         let distance = if self.current_scope_level > symbol.level {
             self.current_scope_level - symbol.level
@@ -229,13 +214,7 @@ impl IRGenerator {
         }
     }
 
-    fn emit_binary_op(
-        &mut self,
-        op: &str,
-        dest: &str,
-        left: &str,
-        right: &str,
-    ) -> Result<(), RegisterError> {
+    fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         match op {
             "add" => emitter.emit_add(dest, left, right),
@@ -250,13 +229,7 @@ impl IRGenerator {
         }
     }
 
-    fn emit_relational_op(
-        &mut self,
-        op: &str,
-        dest: &str,
-        left: &str,
-        right: &str,
-    ) -> Result<(), RegisterError> {
+    fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Result<(), RegisterError> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         match op {
             "cmp_gt" => emitter.emit_cmp_gt(dest, left, right),
@@ -296,10 +269,7 @@ impl IRGenerator {
     }
 
     // Helper: evaluate a condition expression
-    fn evaluate_condition(
-        &mut self,
-        condition: &dyn crate::ast::ExpressionNode,
-    ) -> Result<String, String> {
+    fn evaluate_condition(&mut self, condition: &dyn ExpressionNode) -> Result<String, String> {
         self.emit_expression(condition)
     }
 
@@ -309,12 +279,7 @@ impl IRGenerator {
     }
 
     // Helper: write operation
-    fn emit_write_operation<F>(
-        &mut self,
-        expr_opt: Option<&dyn crate::ast::ExpressionNode>,
-        error_msg: &str,
-        write_fn: F,
-    ) -> Result<(), String>
+    fn emit_write_operation<F>(&mut self, expr_opt: Option<&dyn ExpressionNode>, error_msg: &str, write_fn: F) -> Result<(), String>
     where
         F: FnOnce(&mut Self, &str),
     {
@@ -328,11 +293,7 @@ impl IRGenerator {
     }
 
     // Helper: read operation
-    fn emit_read_operation(
-        &mut self,
-        operation: &str,
-        identifier: &str,
-    ) -> Result<(), RegisterError> {
+    fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Result<(), RegisterError> {
         let symbol = self
             .get_variable_symbol(identifier, "variable in read")
             .map_err(Self::to_output_error)?
@@ -372,12 +333,7 @@ impl IRGenerator {
         emitter.emit_call(&label)
     }
 
-    fn emit_binary_operation(
-        &mut self,
-        left_expr: &dyn crate::ast::ExpressionNode,
-        right_expr: &dyn crate::ast::ExpressionNode,
-        operator: &str,
-    ) -> Result<String, RegisterError> {
+    fn emit_binary_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Result<String, RegisterError> {
         let left_result = self
             .emit_expression(left_expr)
             .map_err(Self::to_output_error)?;
@@ -402,12 +358,7 @@ impl IRGenerator {
         Ok(result_vreg)
     }
 
-    fn emit_relational_operation(
-        &mut self,
-        left_expr: &dyn crate::ast::ExpressionNode,
-        right_expr: &dyn crate::ast::ExpressionNode,
-        operator: &str,
-    ) -> Result<String, RegisterError> {
+    fn emit_relational_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Result<String, RegisterError> {
         let left_result = self
             .emit_expression(left_expr)
             .map_err(Self::to_output_error)?;
@@ -437,11 +388,7 @@ impl IRGenerator {
     // Procedure & Block Helpers
     // ---------------------------
     // Collect all procedures (including nested ones) from a block
-    fn collect_all_procedures<'a>(
-        &self,
-        block: &'a Block,
-        procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>)>,
-    ) {
+    fn collect_all_procedures<'a>(&self, block: &'a Block, procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>)>) {
         // Add procedures from this block
         for (name, proc_block) in &block.proc_decl.procedurs {
             procedures.push((name.clone(), proc_block));
