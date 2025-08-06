@@ -1,5 +1,6 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct BinOp {
     pub left: Option<Box<dyn ExpressionNode>>,
@@ -22,7 +23,7 @@ impl BinOp {
 }
 
 impl Node for BinOp {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_binary_operation(self);
         Ok(())
@@ -63,7 +64,7 @@ impl Node for BinOp {
 }
 
 impl ExpressionNode for BinOp {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_binary_operation(self)
     }
 }
@@ -79,7 +80,7 @@ impl OddCondition {
 }
 
 impl Node for OddCondition {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_condition(self);
         Ok(())
@@ -96,7 +97,7 @@ impl Node for OddCondition {
 }
 
 impl ExpressionNode for OddCondition {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_condition(self)
     }
 }
@@ -122,7 +123,7 @@ impl RelationalCondition {
 }
 
 impl Node for RelationalCondition {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_relational_condition(self);
         Ok(())
@@ -163,7 +164,7 @@ impl Node for RelationalCondition {
 }
 
 impl ExpressionNode for RelationalCondition {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_relational_condition(self)
     }
 }

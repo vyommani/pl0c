@@ -3,6 +3,7 @@ use crate::decl::ConstDecl;
 use crate::decl::ProcDecl;
 use crate::decl::VarDecl;
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct Block {
     pub const_decl: ConstDecl,
@@ -28,7 +29,7 @@ impl Block {
 }
 
 impl Node for Block {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_block(self)
     }
 

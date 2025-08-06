@@ -1,5 +1,6 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct WriteInt {
     pub expr: Option<Box<dyn ExpressionNode>>,
@@ -12,7 +13,7 @@ impl WriteInt {
 }
 
 impl Node for WriteInt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_write_int(self)
     }
     fn print(&self) {
@@ -38,7 +39,7 @@ impl WriteChar {
 }
 
 impl Node for WriteChar {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_write_char(self)
     }
     fn print(&self) {
@@ -64,7 +65,7 @@ impl WriteStr {
 }
 
 impl Node for WriteStr {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_write_str(self)
     }
     fn print(&self) {
@@ -86,7 +87,7 @@ impl ReadInt {
 }
 
 impl Node for ReadInt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_read_int(self)
     }
     fn print(&self) {
@@ -108,7 +109,7 @@ impl ReadChar {
 }
 
 impl Node for ReadChar {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_read_char(self)
     }
     fn print(&self) {

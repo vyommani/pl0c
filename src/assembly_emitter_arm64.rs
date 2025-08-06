@@ -6,7 +6,8 @@ use crate::{
     register_allocator_common::Register,
     utils::string_utils::write_line,
 };
-use crate::register_allocator_common::RegisterError;
+use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
 
 use regex::Regex;
 use std::{
@@ -17,10 +18,9 @@ use std::{
 pub struct Arm64AssemblyEmitter;
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {
-    fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         // Compute next uses of vregs
-        self.compute_vreg_next_uses(ir, allocator)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        self.compute_vreg_next_uses(ir, allocator)?;
         // Collect variables, constants, proc_output, and main_output
         let (variables, constants, needs_write_int, needs_read_int) = Self::collect_data_info(ir);
         let mut data_output = String::new();
@@ -40,7 +40,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn compute_vreg_next_uses(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Result<(), RegisterError> {
+    fn compute_vreg_next_uses(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Pl0Result<()> {
         let mut vreg_uses: HashMap<String, Vec<usize>> = HashMap::new();
         let vreg_regex = Regex::new(r"v[0-9]+\b").unwrap();
         let mut call_indices = Vec::new();
@@ -93,9 +93,9 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
 }
 
 impl Arm64AssemblyEmitter {
-    fn validate_register(&self, reg: usize, error_msg: &str) -> Result<(), io::Error> {
+    fn validate_register(&self, reg: usize, error_msg: &str) -> Pl0Result<()> {
         if reg == 12 {
-            Err(io::Error::new(io::ErrorKind::Other, error_msg))
+            Err(Pl0Error::RegisterConstraintViolation(error_msg.to_string()))
         } else {
             Ok(())
         }
@@ -109,7 +109,7 @@ impl Arm64AssemblyEmitter {
         }
     }
 
-    fn emit_load_immediate(&self, reg: usize, imm: usize, output: &mut String) -> Result<(), io::Error> {
+    fn emit_load_immediate(&self, reg: usize, imm: usize, output: &mut String) -> Pl0Result<()> {
         let imm_val = imm as u64;
         if imm >= 0 && imm <= 0xFFFF {
             write_line(output, format_args!("    mov x{}, #{}\n", reg, imm_val))?;
@@ -152,7 +152,7 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_load_store_address(&self, output: &mut String, dst_reg: usize, src_or_dst: &str, is_load: bool) -> Result<(), io::Error> {
+    fn emit_load_store_address(&self, output: &mut String, dst_reg: usize, src_or_dst: &str, is_load: bool) -> Pl0Result<()> {
         if src_or_dst.starts_with("bp-") {
             let offset = src_or_dst[3..].parse::<i32>().unwrap_or(0);
             write_line(
@@ -167,10 +167,7 @@ impl Arm64AssemblyEmitter {
         } else if src_or_dst.starts_with("up-") {
             let parts: Vec<&str> = src_or_dst[3..].split('-').collect();
             if parts.len() != 2 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Invalid up-<offset>-<distance> format",
-                ));
+                return Err(Pl0Error::CodeGenError { message: "Invalid up-<offset>-<distance> format".to_string(), line: None, });
             }
             let offset = parts[0].parse::<i32>().unwrap_or(0);
             let distance = parts[1].parse::<usize>().unwrap_or(0);
@@ -248,7 +245,7 @@ impl Arm64AssemblyEmitter {
     }
 
     // Helper to emit data section
-    fn emit_data_section(data_output: &mut String, variables: &HashSet<String>, constants: &HashMap<String, String>) -> std::io::Result<()> {
+    fn emit_data_section(data_output: &mut String, variables: &HashSet<String>, constants: &HashMap<String, String>) -> Pl0Result<()> {
         for (name, value) in constants {
             write_line(data_output, format_args!(".equ {}, {}\n", name, value))?;
         }
@@ -297,7 +294,7 @@ impl Arm64AssemblyEmitter {
         (*in_proc, Some(format!("{}\n", line)))
     }
 
-    fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String, main_output: &mut String) -> std::io::Result<usize> {
+    fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String, main_output: &mut String) -> Pl0Result<usize> {
         let mut main_stack_size: usize = 0;
         let mut proc_stack_sizes: Vec<usize> = Vec::new();
         let mut in_proc = false;
@@ -367,7 +364,7 @@ impl Arm64AssemblyEmitter {
     }
 
     // Helper to emit main section
-    fn emit_main_section(main_output: &str, allocator: &mut dyn RegisterAllocator, main_stack_size: usize) -> std::io::Result<String> {
+    fn emit_main_section(main_output: &str, allocator: &mut dyn RegisterAllocator, main_stack_size: usize) -> Pl0Result<String> {
         let mut new_main_output = String::new();
         write_line(&mut new_main_output, format_args!(".global main\n"))?;
         write_line(&mut new_main_output, format_args!("main:\n"))?;
@@ -393,7 +390,7 @@ impl Arm64AssemblyEmitter {
     }
 
     // Helper to assemble final output
-    fn assemble_final_output(data_output: &str, new_main_output: &str, proc_output: &str, footer: &str) -> std::io::Result<String> {
+    fn assemble_final_output(data_output: &str, new_main_output: &str, proc_output: &str, footer: &str) -> Pl0Result<String> {
         let mut final_output = String::new();
         if !data_output.is_empty() {
             write_line(&mut final_output, format_args!("{}", data_output))?;
@@ -406,7 +403,7 @@ impl Arm64AssemblyEmitter {
         Ok(final_output)
     }
 
-    fn emit_prologue(output: &mut String, allocator: &mut dyn RegisterAllocator) -> Result<(), io::Error> {
+    fn emit_prologue(output: &mut String, allocator: &mut dyn RegisterAllocator) -> Pl0Result<()> {
         write_line(output, format_args!("    stp x29, x30, [sp, #-16]!\n"))?;
         write_line(output, format_args!("    mov x29, sp\n"))?;
         // Store static link (from x19) at [x29, #-8]
@@ -434,7 +431,7 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_epilogue(output: &mut String, allocator: &mut dyn RegisterAllocator) -> Result<(), io::Error> {
+    fn emit_epilogue(output: &mut String, allocator: &mut dyn RegisterAllocator) -> Pl0Result<()> {
         // Restore used callee-saved registers in reverse order
         if let Some(alloc) = allocator
             .as_any_mut()
@@ -461,19 +458,19 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_write_int_arm64(&self, src: &str, idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_write_int_arm64(&self, src: &str, idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         Arm64Runtime::emit_write_int_call(src, idx, allocator, output, |s, i, a| {
             self.is_dead_after(s, i, a)
         })
     }
 
-    fn emit_read_int_arm64(&self, dst: &str, idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_read_int_arm64(&self, dst: &str, idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         Arm64Runtime::emit_read_int_call(dst, idx, allocator, output, |s, i, a| {
             self.is_dead_after(s, i, a)
         })
     }
 
-    fn emit_footer(&self, output: &mut String, needs_write_int: bool, needs_read_int: bool) -> Result<(), io::Error> {
+    fn emit_footer(&self, output: &mut String, needs_write_int: bool, needs_read_int: bool) -> Pl0Result<()> {
         write_line(output, format_args!(".section __TEXT,__text\n"))?;
         write_line(output, format_args!(".global _start\n"))?;
         write_line(output, format_args!("_start:\n"))?;
@@ -500,12 +497,9 @@ impl Arm64AssemblyEmitter {
         }
     }
 
-    fn emit_var_addr(&self, output: &mut String, reg: u8, var: &str) -> Result<(), io::Error> {
+    fn emit_var_addr(&self, output: &mut String, reg: u8, var: &str) -> Pl0Result<()> {
         if reg != 12 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Only x12 can be used for addressing",
-            ));
+            return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
         }
         write_line(output, format_args!("    adrp x{}, {}@PAGE\n", reg, var))?;
         write_line(
@@ -515,12 +509,11 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_li(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_li(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .alloc(dst, output)?;
         if let Ok(imm_val) = imm.parse::<usize>() {
             self.emit_load_immediate(pdst, imm_val, output)?;
         } else {
@@ -532,13 +525,12 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_ld(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_ld(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"");
         let src = src.trim().replace(['[', ']', ','], "");
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .alloc(dst, output)?;
         self.validate_register(pdst, "x12 cannot be used for vreg allocation")?;
         self.emit_load_store_address(output, pdst, &src, true)?;
         if self.is_dead_after(dst, idx, allocator) {
@@ -547,13 +539,12 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_st(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_st(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"");
         let dst = dst.trim().replace(['[', ']', ','], "");
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src, output)?;
         self.validate_register(psrc, "x12 cannot be used for vreg allocation")?;
         self.emit_load_store_address(output, psrc, &dst, false)?;
         if self.is_dead_after(src, idx, allocator) {
@@ -562,7 +553,7 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_binop(&self, op: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_binop(&self, op: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
@@ -576,19 +567,15 @@ impl Arm64AssemblyEmitter {
                     if imm2 != 0 {
                         imm1.wrapping_div(imm2)
                     } else {
-                        return Err(io::Error::new(io::ErrorKind::Other, "Division by zero"));
+                        return Err(Pl0Error::CodeGenError { message: "Division by zero".to_string(), line: None, });
                     }
                 }
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Operation {} not supported", op),
-                    ))
+                    return Err(Pl0Error::CodeGenError { message: format!("Operation {} not supported", op), line: None, });
                 }
             };
             let pdst = allocator
-                .alloc(dst, output)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .alloc(dst, output)?;
             self.validate_register(pdst, "x12 cannot be used for computation")?;
             write_line(output, format_args!("    mov x{}, #{}\n", pdst, result))?;
             if self.is_dead_after(dst, idx, allocator) {
@@ -598,8 +585,7 @@ impl Arm64AssemblyEmitter {
         }
 
         let psrc1 = allocator
-            .ensure(src1, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .ensure(src1, output)?;
         self.validate_register(psrc1, "x12 cannot be used for computation")?;
 
         // Reuse psrc1 for dst if temporary and dead
@@ -612,8 +598,7 @@ impl Arm64AssemblyEmitter {
             psrc1
         } else {
             allocator
-                .alloc(dst, output)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+                .alloc(dst, output)?
         };
         self.validate_register(pdst, "x12 cannot be used for computation")?;
 
@@ -628,10 +613,7 @@ impl Arm64AssemblyEmitter {
                     } else {
                         let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
                         if temp_reg == 12 {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "x12 cannot be used for computation",
-                            ));
+                            return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                         }
                         write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
                         write_line(
@@ -643,10 +625,7 @@ impl Arm64AssemblyEmitter {
                 "sdiv" | "mul" => {
                     let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
                     if temp_reg == 12 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "x12 cannot be used for computation",
-                        ));
+                        return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                     }
                     write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
                     write_line(
@@ -655,21 +634,14 @@ impl Arm64AssemblyEmitter {
                     )?;
                 }
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Operation {} with immediate not supported", op),
-                    ));
+                    return Err(Pl0Error::CodeGenError { message: format!("Operation {} with immediate not supported", op), line: None, });
                 }
             }
         } else {
             let psrc2 = allocator
-                .ensure(src2, output)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .ensure(src2, output)?;
             if psrc2 == 12 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "x12 cannot be used for computation",
-                ));
+                return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
             }
             write_line(
                 output,
@@ -689,25 +661,19 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_relational(&self, op: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_relational(&self, op: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
         let psrc1 = allocator
-            .ensure(src1, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src1, output)?;
         let psrc2 = allocator
-            .ensure(src2, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src2, output)?;
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .alloc(dst, output)?;
         // Never use x12 for computation
         if psrc1 == 12 || psrc2 == 12 || pdst == 12 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "x12 cannot be used for computation",
-            ));
+            return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
         }
         write_line(output, format_args!("    cmp x{}, x{}\n", psrc1, psrc2))?;
         match op {
@@ -718,10 +684,7 @@ impl Arm64AssemblyEmitter {
             "cmp_ge" => write_line(output, format_args!("    cset x{}, ge\n", pdst))?,
             "cmp_le" => write_line(output, format_args!("    cset x{}, le\n", pdst))?,
             _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "invalid relational op",
-                ))
+                return Err(Pl0Error::CodeGenError { message: "invalid relational op".to_string(), line: None, });
             }
         }
         if self.is_dead_after(src1, idx, allocator) {
@@ -736,15 +699,13 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_is_odd(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_is_odd(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src, output)?;
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .alloc(dst, output)?;
         write_line(output, format_args!("    and x{}, x{}, #1\n", pdst, psrc))?;
         if self.is_dead_after(src, idx, allocator) {
             allocator.free(psrc);
@@ -755,18 +716,17 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_jump(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_jump(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         write_line(output, format_args!("    b {}\n", label))?;
         Ok(())
     }
 
-    fn emit_beqz(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_beqz(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let label = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src, output)?;
         write_line(output, format_args!("    cbz x{}, {}\n", psrc, label))?;
         if self.is_dead_after(src, idx, allocator) {
             allocator.free(psrc);
@@ -774,7 +734,7 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_call(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_call(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         // Pass static link for direct child: mov x19, x29
         write_line(output, format_args!("    mov x19, x29\n"))?;
@@ -782,7 +742,7 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_exit(&self, output: &mut String) -> Result<(), io::Error> {
+    fn emit_exit(&self, output: &mut String) -> Pl0Result<()> {
         write_line(output, format_args!("    mov x0, #0\n"))?;
         write_line(
             output,
@@ -798,7 +758,7 @@ impl Arm64AssemblyEmitter {
 
     #[allow(clippy::too_many_arguments)]
     fn emit_instructions(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator,target_output: &mut String,
-        in_proc: &mut bool, current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, line: &str) -> Result<(), io::Error> {
+        in_proc: &mut bool, current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, line: &str) -> Pl0Result<()> {
         match op {
             IROp::ProcEnter => {
                 *in_proc = true;
@@ -848,7 +808,7 @@ impl Arm64AssemblyEmitter {
 
     #[allow(clippy::too_many_arguments)]
     fn emit_instruction_with_stack(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, target_output: &mut String, in_proc: &mut bool,
-        current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, proc_stack_sizes: &mut Vec<usize>, line: &str) -> Result<(), io::Error> {
+        current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, proc_stack_sizes: &mut Vec<usize>, line: &str) -> Pl0Result<()> {
         match op {
             IROp::ProcEnter => {
                 *in_proc = true;
@@ -891,20 +851,17 @@ impl Arm64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_mod(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Result<(), io::Error> {
+    fn emit_mod(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
 
         let psrc1 = allocator
-            .ensure(src1, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src1, output)?;
         let psrc2 = allocator
-            .ensure(src2, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .ensure(src2, output)?;
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?;
+            .alloc(dst, output)?;
 
         // Use a temp register for the quotient (let's use x11, but ensure it's not used for vregs)
         let temp = 11usize;

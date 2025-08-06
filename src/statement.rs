@@ -1,5 +1,6 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct AssignStmt {
     pub identifier: String,
@@ -13,7 +14,7 @@ impl AssignStmt {
 }
 
 impl Node for AssignStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_assign(self)
     }
 
@@ -40,7 +41,7 @@ impl BeginStmt {
 }
 
 impl Node for BeginStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_begin(self)
     }
     fn print(&self) {
@@ -79,7 +80,7 @@ impl IfStmt {
 }
 
 impl Node for IfStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_if(self)
     }
     fn print(&self) {
@@ -114,7 +115,7 @@ impl WhileStatement {
 }
 
 impl Node for WhileStatement {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_while_statement(self)
     }
     fn print(&self) {
@@ -143,7 +144,7 @@ impl CallStmt {
 }
 
 impl Node for CallStmt {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_call(self)
     }
     fn print(&self) {

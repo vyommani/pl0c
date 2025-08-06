@@ -4,6 +4,7 @@ use pl0c::{
     codegen::IRGenerator, lexer::scan, parser::parse, read, symboltable::SymbolTable,
 };
 use std::{path::PathBuf, process::exit, process::Command, time::Instant};
+use pl0c::errors::{Pl0Error, Pl0Result};
 
 #[derive(Parser)]
 #[command(
@@ -58,28 +59,6 @@ struct Cli {
     show_ast: bool,
 }
 
-#[derive(Debug)]
-enum CompilerError {
-    FileReadError(String),
-    LexerError(String),
-    ParserError(String),
-    CodeGenError(String),
-    RegisterAllocError(String),
-}
-
-impl std::fmt::Display for CompilerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CompilerError::FileReadError(msg) => write!(f, "File read error: {}", msg),
-            CompilerError::LexerError(msg) => write!(f, "Lexer error: {}", msg),
-            CompilerError::ParserError(msg) => write!(f, "Parser error: {}", msg),
-            CompilerError::CodeGenError(msg) => write!(f, "Code generation error: {}", msg),
-            CompilerError::RegisterAllocError(msg) => {
-                write!(f, "Register allocation error: {}", msg)
-            }
-        }
-    }
-}
 
 struct CompilationStats {
     lexer_time: f64,
@@ -114,7 +93,7 @@ fn detect_arch(target: &Option<String>) -> &'static str {
     }
 }
 
-fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats), CompilerError> {
+fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationStats)> {
     let start_time = Instant::now();
 
     if args.verbose {
@@ -126,10 +105,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
         Some("x86_64") => TargetArch::X86_64,
         Some("arm64") => TargetArch::ARM64,
         Some(other) => {
-            return Err(CompilerError::ParserError(format!(
-                "Unsupported target: {}",
-                other
-            )))
+            return Err(Pl0Error::compilation_error("target detection", format!("Unsupported target: {}", other)))
         }
         None => {
             // Auto-detect host architecture
@@ -138,15 +114,13 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
             } else if cfg!(target_arch = "aarch64") {
                 TargetArch::ARM64
             } else {
-                return Err(CompilerError::ParserError(
-                    "Unsupported host architecture".to_string(),
-                ));
+                return Err(Pl0Error::compilation_error("target detection", "Unsupported host architecture".to_string()));
             }
         }
     };
 
     // Read input file
-    let bytes = read(input_path).map_err(|e| CompilerError::FileReadError(e.to_string()))?;
+    let bytes = read(input_path)?;
     if args.verbose {
         println!("Read {} bytes from input file", bytes.len());
     }
@@ -155,8 +129,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     let lexer_start = Instant::now();
     let mut state = pl0c::LineNumber::default();
     let mut symbol_table = SymbolTable::new();
-    let tokens = scan(&mut state, &bytes, &mut symbol_table)
-        .map_err(|e| CompilerError::LexerError(e.to_string()))?;
+    let tokens = scan(&mut state, &bytes, &mut symbol_table)?;
     let lexer_time = lexer_start.elapsed().as_secs_f64();
 
     if args.verbose {
@@ -179,17 +152,13 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
             ast.print();
         }
     } else {
-        return Err(CompilerError::ParserError(
-            "Failed to parse input".to_string(),
-        ));
+        return Err(Pl0Error::compilation_error("parsing", "Failed to parse input".to_string()));
     }
 
     // Intermediate Code generation
     let codegen_start = Instant::now();
     let mut codegen = IRGenerator::new(symbol_table);
-    codegen
-        .generate_code(ast)
-        .map_err(|e| CompilerError::CodeGenError(e.to_string()))?;
+    codegen.generate_code(ast);
     let ir_output = codegen.get_output();
     let codegen_time = codegen_start.elapsed().as_secs_f64();
 
@@ -206,9 +175,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Result<(String, CompilationStats
     // Assembly generation
     let assembly_start = Instant::now();
     let mut assembly_gen = AssemblyGenerator::new(target_arch);
-    assembly_gen
-        .emit_assembly(&ir_output)
-        .map_err(|e| CompilerError::RegisterAllocError(e.to_string()))?;
+    assembly_gen.emit_assembly(&ir_output);
     let assembly_output = assembly_gen.get_output().to_string();
     let assembly_time = assembly_start.elapsed().as_secs_f64();
 
@@ -252,9 +219,9 @@ fn print_stats(stats: &CompilationStats) {
 }
 
 fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
-    use std::fs;
-    use std::path::Path;
     use std::process::Command;
+    use std::path::Path;
+    use std::fs;
     let os_name = std::env::consts::OS;
     let obj_file = "output.o";
     let as_status;
@@ -265,10 +232,8 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("On macOS, only x86_64 and arm64 architectures are supported.");
         }
         as_status = Command::new("as")
-            .arg("-arch")
-            .arg(arch)
-            .arg("-o")
-            .arg(obj_file)
+            .arg("-arch").arg(arch)
+            .arg("-o").arg(obj_file)
             .arg(asm_file)
             .status();
         if let Err(e) = &as_status {
@@ -278,13 +243,10 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("Assembler failed.");
         }
         link_status = Command::new("clang")
-            .arg("-arch")
-            .arg(arch)
-            .arg("-o")
-            .arg(exe_file)
+            .arg("-arch").arg(arch)
+            .arg("-o").arg(exe_file)
             .arg(obj_file)
-            .arg("-e")
-            .arg("_start")
+            .arg("-e").arg("_start")
             .status();
         if let Err(e) = &link_status {
             fatal(&format!("Failed to invoke linker: {}", e));
@@ -298,11 +260,9 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
             fatal("On Linux, only x86_64 architecture is supported.");
         }
         as_status = Command::new("nasm")
-            .arg("-f")
-            .arg("elf64")
+            .arg("-f").arg("elf64")
             .arg(asm_file)
-            .arg("-o")
-            .arg(obj_file)
+            .arg("-o").arg(obj_file)
             .status();
         if let Err(e) = &as_status {
             fatal(&format!("Failed to invoke assembler: {}", e));
@@ -312,8 +272,7 @@ fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str) {
         }
         link_status = Command::new("ld")
             .arg(obj_file)
-            .arg("-o")
-            .arg(exe_file)
+            .arg("-o").arg(exe_file)
             .status();
         if let Err(e) = &link_status {
             fatal(&format!("Failed to invoke linker: {}", e));

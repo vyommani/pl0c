@@ -4,6 +4,9 @@ use crate::{
     register_allocator_common::Register,
     register_allocator_x86_64::RegisterName,
 };
+use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
+
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
@@ -108,7 +111,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         let (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings) =
             Self::collect_data_info(ir);
         let mut data_output = String::new();
@@ -150,7 +153,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         &self,
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
-    ) -> Result<(), crate::register_allocator_common::RegisterError> {
+    ) -> Pl0Result<()> {
         // Optimization: Track live ranges for better register reuse
         let mut vreg_uses: HashMap<String, Vec<usize>> = HashMap::new();
         let vreg_regex = Regex::new(r"v[0-9]+\b").unwrap();
@@ -258,7 +261,7 @@ impl X86_64AssemblyEmitter {
         strings: &[String],
         needs_write_int: bool,
         needs_write_str: bool,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let mut used_constants = HashSet::new();
         for (name, _) in constants {
             if output.contains(name) {
@@ -299,7 +302,7 @@ impl X86_64AssemblyEmitter {
         stack_analyzer: &StackAnalyzer,
         constants: &HashMap<String, String>,
         strings: &[String],
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let mut in_proc = false;
         let mut current_proc = None;
         let mut proc_stack = Vec::new();
@@ -390,7 +393,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_main_section(main_output: &str, stack_analyzer: &StackAnalyzer) -> io::Result<String> {
+    fn emit_main_section(main_output: &str, stack_analyzer: &StackAnalyzer) -> Pl0Result<String> {
         let mut new_main_output = String::new();
         new_main_output.push_str("section .text\n");
         new_main_output.push_str("global _start\n");
@@ -413,7 +416,7 @@ impl X86_64AssemblyEmitter {
         new_main_output: &str,
         proc_output: &str,
         footer: &str,
-    ) -> io::Result<String> {
+    ) -> Pl0Result<String> {
         let mut final_output = String::new();
         if !data_output.is_empty() {
             final_output.push_str(data_output);
@@ -439,7 +442,7 @@ impl X86_64AssemblyEmitter {
         stack_analyzer: &StackAnalyzer,
         constants: &HashMap<String, String>,
         strings: &[String],
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         match op {
             IROp::ProcEnter => {
                 *in_proc = true;
@@ -481,8 +484,7 @@ impl X86_64AssemblyEmitter {
             IROp::ReadInt => {
                 let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
                 let pdst = allocator
-                    .alloc(dst, output)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                    .alloc(dst, output)?;
                 output.push_str("    call read_int\n");
                 output.push_str(&format!("    mov r{}, rax ; read_int {}\n", pdst, dst));
                 self.free_if_dead(dst, idx, pdst, allocator);
@@ -522,7 +524,7 @@ impl X86_64AssemblyEmitter {
         }
     }
 
-    fn emit_prologue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
+    fn emit_prologue(output: &mut String, stack_analyzer: &StackAnalyzer) -> Pl0Result<()> {
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
         // Calculate stack size: 8 bytes per variable + 8 for static link if needed
@@ -550,7 +552,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_epilogue(output: &mut String, stack_analyzer: &StackAnalyzer) -> io::Result<()> {
+    fn emit_epilogue(output: &mut String, stack_analyzer: &StackAnalyzer) -> Pl0Result<()> {
         let used_callee_saved: Vec<_> = stack_analyzer.get_used_callee_saved().into_iter().collect();
         let mut sorted_regs = used_callee_saved;
         sorted_regs.sort_by(|a, b| b.cmp(a)); // Restore in reverse order
@@ -569,10 +571,9 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         let psrc = allocator
-            .ensure(src, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .ensure(src, output)?;
         if psrc != 0 {
             output.push_str(&format!("    mov rdi, r{}\n", psrc));
         }
@@ -588,7 +589,7 @@ impl X86_64AssemblyEmitter {
         _allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         strings: &[String],
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let str_clean = src.trim_matches(|c| c == ',' || c == '"' || c == '\'');
         let label = strings
             .iter()
@@ -609,7 +610,7 @@ impl X86_64AssemblyEmitter {
         needs_write_int: bool,
         needs_read_int: bool,
         needs_write_str: bool,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         if needs_write_int {
             self.emit_write_int_routine(output)?;
         }
@@ -622,7 +623,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_write_int_routine(&self, output: &mut String) -> io::Result<()> {
+    fn emit_write_int_routine(&self, output: &mut String) -> Pl0Result<()> {
         output.push_str("section .text\n");
         output.push_str("write_int:\n");
         output.push_str("    push rbp\n");
@@ -693,7 +694,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_read_int_routine(&self, output: &mut String) -> io::Result<()> {
+    fn emit_read_int_routine(&self, output: &mut String) -> Pl0Result<()> {
         output.push_str("read_int:\n");
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
@@ -751,7 +752,7 @@ impl X86_64AssemblyEmitter {
         output.push_str("    ret\n");
         Ok(())
     }
-    fn emit_write_str_routine(&self, output: &mut String) -> io::Result<()> {
+    fn emit_write_str_routine(&self, output: &mut String) -> Pl0Result<()> {
         output.push_str("section .text\n");
         output.push_str("write_str:\n");
         output.push_str("    push rbp\n");
@@ -796,12 +797,11 @@ impl X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         constants: &HashMap<String, String>,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .alloc(dst, output)?;
         // Optimization: Inline constant values
         let value = constants.get(imm).map(|v| v.as_str()).unwrap_or(imm);
         output.push_str(&format!("    mov r{}, {}\n", pdst, value));
@@ -838,32 +838,25 @@ impl X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         constants: &HashMap<String, String>,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src_cleaned = rest.get(1).unwrap_or(&"").trim().replace([','], "");
         let src = Self::strip_brackets(&src_cleaned);
         let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .alloc(dst, output)?;
 
         if src.starts_with("bp-") {
             let mut offset = src[3..].parse::<i32>().unwrap_or(0);
             if offset == 8 {
                 offset = 16;
             } else if offset <= 8 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Invalid load from reserved stack slot: {}", src),
-                ));
+                return Err(Pl0Error::CodeGenError { message: format!("Invalid load from reserved stack slot: {}", src), line: None, });
             }
             output.push_str(&format!("    mov r{}, [rbp - {}]\n", pdst, offset));
         } else if src.starts_with("up-") {
             let parts: Vec<&str> = src[3..].split('-').collect();
             if parts.len() != 2 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Invalid up-<offset>-<distance> format",
-                ));
+                return Err(Pl0Error::CodeGenError { message: "Invalid up-<offset>-<distance> format".to_string(), line: None, });
             }
             let offset = parts[0].parse::<i32>().unwrap_or(0);
             let distance = parts[1].parse::<usize>().unwrap_or(0);
@@ -890,19 +883,15 @@ impl X86_64AssemblyEmitter {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         constants: &HashMap<String, String>,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst_cleaned = rest.get(0).unwrap_or(&"").trim().replace([','], "");
         let dst = Self::strip_brackets(&dst_cleaned);
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator
-            .ensure(src, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .ensure(src, output)?;
 
         if constants.contains_key(dst) {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Cannot store to constant: {}", dst),
-            ));
+            return Err(Pl0Error::CodeGenError { message: format!("Cannot store to constant: {}", dst), line: None, });
         }
 
         if dst.starts_with("bp-") {
@@ -911,19 +900,13 @@ impl X86_64AssemblyEmitter {
                 // Remap [bp-8] to [bp-16] for local variable in procedure b
                 offset = 16;
             } else if offset <= 8 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Invalid store to reserved stack slot: {}", dst),
-                ));
+                return Err(Pl0Error::CodeGenError { message: format!("Invalid store to reserved stack slot: {}", dst), line: None, });
             }
             output.push_str(&format!("    mov [rbp - {}], r{}\n", offset, psrc));
         } else if dst.starts_with("up-") {
             let parts: Vec<&str> = dst[3..].split('-').collect();
             if parts.len() != 2 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Invalid up-<offset>-<distance> format",
-                ));
+                return Err(Pl0Error::CodeGenError { message: "Invalid up-<offset>-<distance> format".to_string(), line: None, });
             }
             let offset = parts[0].parse::<i32>().unwrap_or(0);
             let distance = parts[1].parse::<usize>().unwrap_or(0);
@@ -948,19 +931,14 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
-        let psrc1 = allocator
-            .ensure(src1, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let psrc2 = allocator
-            .ensure(src2, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        
+        let psrc1 = allocator.ensure(src1, output)?;
+        let psrc2 = allocator.ensure(src2, output)?;
+        let pdst = allocator.alloc(dst, output)?;
 
         let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
         let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
@@ -1004,19 +982,14 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
-        let psrc1 = allocator
-            .ensure(src1, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let psrc2 = allocator
-            .ensure(src2, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        
+        let psrc1 = allocator.ensure(src1, output)?;
+        let psrc2 = allocator.ensure(src2, output)?;
+        let pdst = allocator.alloc(dst, output)?;
 
         let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
         let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
@@ -1051,15 +1024,13 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let psrc = allocator
-            .ensure(src, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let pdst = allocator
-            .alloc(dst, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        
+        let psrc = allocator.ensure(src, output)?;
+        let pdst = allocator.alloc(dst, output)?;
+        
         output.push_str(&format!("    mov r{}, r{}\n", pdst, psrc));
         output.push_str(&format!("    and r{}, 1\n", pdst));
         self.free_if_dead(src, idx, psrc, allocator);
@@ -1073,7 +1044,7 @@ impl X86_64AssemblyEmitter {
         _idx: usize,
         _allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         output.push_str(&format!("    jmp {}\n", label));
         Ok(())
@@ -1085,12 +1056,10 @@ impl X86_64AssemblyEmitter {
         idx: usize,
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let label = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let psrc = allocator
-            .ensure(src, output)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let psrc = allocator.ensure(src, output)?;
         output.push_str(&format!("    test r{}, r{}\n", psrc, psrc));
         output.push_str(&format!("    jz {}\n", label));
         self.free_if_dead(src, idx, psrc, allocator);
@@ -1103,7 +1072,7 @@ impl X86_64AssemblyEmitter {
         _idx: usize,
         _allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> io::Result<()> {
+    ) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         output.push_str("    mov r12, rbp ; Pass static link\n");
         output.push_str("    and rsp, -16 ; Align stack to 16 bytes\n");
@@ -1111,7 +1080,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_exit(&self, output: &mut String) -> io::Result<()> {
+    fn emit_exit(&self, output: &mut String) -> Pl0Result<()> {
         output.push_str("    mov rax, 0 ; exit 0\n");
         // Do NOT emit leave/ret here; epilogue is handled by section header
         Ok(())

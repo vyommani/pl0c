@@ -1,5 +1,6 @@
 use crate::ast::Node;
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct Program {
     pub block: Option<Box<dyn Node>>,
@@ -13,7 +14,7 @@ impl Program {
 }
 
 impl Node for Program {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_program(self)
     }
 

@@ -1,5 +1,6 @@
 use crate::assembly_generator::RegisterAllocator;
 use crate::utils::string_utils::write_line;
+use crate::errors::Pl0Result;
 use std::io;
 pub struct Arm64Runtime;
 
@@ -15,20 +16,18 @@ impl Arm64Runtime {
         pre_call_setup: F,
         post_call_cleanup: G,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
-    ) -> Result<(), io::Error>
+    ) -> Pl0Result<()>
     where
-        F: FnOnce(usize, &mut String) -> Result<(), io::Error>,
-        G: FnOnce(usize, &mut String) -> Result<(), io::Error>,
+        F: FnOnce(usize, &mut String) -> Pl0Result<()>,
+        G: FnOnce(usize, &mut String) -> Pl0Result<()>,
     {
         // Register allocation with consistent error handling
         let preg = if use_alloc {
             allocator
-                .alloc(reg_name, output)
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?
+                .alloc(reg_name, output)?
         } else {
             allocator
-                .ensure(reg_name, output)
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "register allocation error"))?
+                .ensure(reg_name, output)?
         };
 
         // Pre-call setup (move to x0 for input functions like write_int/write_str)
@@ -55,7 +54,7 @@ impl Arm64Runtime {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         Self::emit_runtime_call_generic(
             src,
             idx,
@@ -81,7 +80,7 @@ impl Arm64Runtime {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         Self::emit_runtime_call_generic(
             dst,
             idx,
@@ -102,7 +101,7 @@ impl Arm64Runtime {
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
         is_dead_after_fn: impl Fn(&str, usize, &mut dyn RegisterAllocator) -> bool,
-    ) -> Result<(), io::Error> {
+    ) -> Pl0Result<()> {
         Self::emit_runtime_call_generic(
             src,
             idx,
@@ -122,7 +121,7 @@ impl Arm64Runtime {
     }
 
     /// Emit the complete write_int runtime function implementation
-    pub fn emit_write_int_implementation(output: &mut String) -> Result<(), io::Error> {
+    pub fn emit_write_int_implementation(output: &mut String) -> Pl0Result<()> {
         write_line(output, format_args!(".section __DATA,__data\n"))?;
         write_line(output, format_args!("    .align 3\n"))?;
         write_line(output, format_args!("int_buffer:\n"))?;
@@ -199,7 +198,7 @@ impl Arm64Runtime {
     }
 
     /// Emit the complete read_int runtime function implementation
-    pub fn emit_read_int_implementation(output: &mut String) -> Result<(), io::Error> {
+    pub fn emit_read_int_implementation(output: &mut String) -> Pl0Result<()> {
         write_line(output, format_args!(".section __DATA,__data\n"))?;
         write_line(output, format_args!("    .align 3\n"))?;
         write_line(output, format_args!("input_buffer:\n"))?;
@@ -289,7 +288,7 @@ impl Arm64Runtime {
     }
 
     /// Emit the complete write_str runtime function implementation
-    pub fn emit_write_str_implementation(output: &mut String) -> Result<(), io::Error> {
+    pub fn emit_write_str_implementation(output: &mut String) -> Pl0Result<()> {
         write_line(output, format_args!(".section __TEXT,__text\n"))?;
         write_line(output, format_args!(".global _write_str\n"))?;
         write_line(output, format_args!("_write_str:\n"))?;

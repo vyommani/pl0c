@@ -1,5 +1,6 @@
 use crate::ast::Node;
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct ProcDecl {
     pub procedurs: Vec<(String, Option<Box<dyn Node>>)>,
@@ -17,7 +18,7 @@ impl ProcDecl {
 }
 
 impl Node for ProcDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_proc_decl(self)
     }
     fn print(&self) {
@@ -58,7 +59,7 @@ impl VarDecl {
 }
 
 impl Node for VarDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_var_decl(self)
     }
     fn print(&self) {
@@ -97,7 +98,7 @@ impl ConstDecl {
 }
 
 impl Node for ConstDecl {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_const(self)
     }
     fn print(&self) {

@@ -1,5 +1,6 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 
 pub struct Ident {
     pub value: String,
@@ -12,7 +13,7 @@ impl Ident {
 }
 
 impl Node for Ident {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_ident(self);
         Ok(())
@@ -26,7 +27,7 @@ impl Node for Ident {
 }
 
 impl ExpressionNode for Ident {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_ident(self)
     }
 }
@@ -42,7 +43,7 @@ impl Number {
 }
 
 impl Node for Number {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_number(self);
         Ok(())
@@ -56,7 +57,7 @@ impl Node for Number {
 }
 
 impl ExpressionNode for Number {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_number(self)
     }
 }

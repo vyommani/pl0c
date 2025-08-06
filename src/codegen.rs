@@ -6,11 +6,12 @@ use crate::{
     expression::{BinOp, OddCondition, RelationalCondition},
     io::{ReadChar, ReadInt, WriteChar, WriteInt, WriteStr},
     program::Program,
-    register_allocator_common::RegisterError,
     statement::{AssignStmt, BeginStmt, CallStmt, IfStmt, WhileStatement},
     symboltable::{Symbol, SymbolLocation, SymbolTable, SymbolType},
     types::{Ident, Number},
     visiters::ASTVisitor,
+    errors::Pl0Result,
+    errors::Pl0Error,
 };
 
 pub struct IRGenerator {
@@ -84,13 +85,12 @@ impl IRGenerator {
         output
     }
 
-    pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Result<(), String> {
+    pub fn generate_code(&mut self, ast: Option<Box<dyn Node + 'static>>) -> Pl0Result<()> {
         self.exit_emitted = false;
         ast.ok_or_else(|| "No AST provided for code generation".to_string())?
-            .accept(self)
-            .map_err(Self::to_string_error)?;
+            .accept(self);
         if !self.exit_emitted {
-            self.system_exit(0).map_err(Self::to_string_error)?;
+            self.system_exit(0);
         }
         Ok(())
     }
@@ -98,11 +98,11 @@ impl IRGenerator {
     // ---------------------------
     // Expression & System Helpers
     // ---------------------------
-    fn emit_expression(&mut self, expr: &dyn crate::ast::ExpressionNode) -> Result<String, String> {
+    fn emit_expression(&mut self, expr: &dyn crate::ast::ExpressionNode) -> Pl0Result<String> {
         ExpressionNode::accept(expr, self)
     }
 
-    fn system_exit(&mut self, code: i32) -> Result<(), RegisterError> {
+    fn system_exit(&mut self, code: i32) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_exit(code)
     }
@@ -110,16 +110,13 @@ impl IRGenerator {
     // ---------------------------
     // Symbol Table Helpers
     // ---------------------------
-    fn get_symbol_with_type(&self, name: &str, expected_type: SymbolType, operation: &str) -> Result<&Symbol, String> {
+    fn get_symbol_with_type(&self, name: &str, expected_type: SymbolType, operation: &str) -> Pl0Result<&Symbol> {
         let symbol = self
             .symbol_table
             .get(name)
             .ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
         if std::mem::discriminant(&symbol.symbol_type) != std::mem::discriminant(&expected_type) {
-            return Err(format!(
-                "Expected {:?} but found {:?}: {}",
-                expected_type, symbol.symbol_type, name
-            ));
+            return Err(Pl0Error::CodeGenError { message: format!("Expected {:#?} but found {:#?}", expected_type, symbol.symbol_type), line: None });
         }
 
         Ok(symbol)
@@ -135,30 +132,29 @@ impl IRGenerator {
         }
     }
 
-    fn get_variable_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
+    fn get_variable_symbol(&self, name: &str, operation: &str) -> Pl0Result<&Symbol> {
         let symbol = self
             .symbol_table
             .get_at_level(name, self.current_scope_level)
-            .ok_or_else(|| format!("Undefined {}: {}", operation, name))?;
+            .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined {}: {}", operation, name)))?;
         if !matches!(symbol.symbol_type, SymbolType::Variable) {
-            return Err(format!(
+            return Err(Pl0Error::codegen_error(format!(
                 "Expected variable but found {:?}: {}",
                 symbol.symbol_type, name
-            ));
+            )));
         }
         Ok(symbol)
     }
 
-    fn get_procedure_symbol(&self, name: &str, operation: &str) -> Result<&Symbol, String> {
+    fn get_procedure_symbol(&self, name: &str, operation: &str) -> Pl0Result<&Symbol> {
         self.get_symbol_with_type(name, SymbolType::Procedure, operation)
     }
 
-    fn get_or_load_variable(&mut self, variable_name: &str) -> Result<String, String> {
+    fn get_or_load_variable(&mut self, variable_name: &str) -> Pl0Result<String> {
         // Always load from memory for correctness
         let symbol = self.get_variable_symbol(variable_name, "variable")?.clone();
         let vreg = self.allocate_virtual_register();
-        self.emit_load_from_symbol(&symbol, &vreg, variable_name)
-            .map_err(Self::to_string_error)?;
+        self.emit_load_from_symbol(&symbol, &vreg, variable_name)?;
         Ok(vreg)
     }
 
@@ -166,7 +162,7 @@ impl IRGenerator {
     // IR Emission Helpers
     // ---------------------------
     // Helper function to generate load instruction based on symbol location
-    fn emit_load_from_symbol(&mut self, symbol: &Symbol, target_vreg: &str, fallback_name: &str) -> Result<(), RegisterError> {
+    fn emit_load_from_symbol(&mut self, symbol: &Symbol, target_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         let distance = if self.current_scope_level > symbol.level {
             self.current_scope_level - symbol.level
@@ -188,7 +184,7 @@ impl IRGenerator {
     }
 
     // Helper function to generate store instruction based on symbol location
-    fn emit_store_to_symbol(&mut self, symbol: &Symbol, source_vreg: &str, fallback_name: &str) -> Result<(), RegisterError> {
+    fn emit_store_to_symbol(&mut self, symbol: &Symbol, source_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         let distance = if self.current_scope_level > symbol.level {
             self.current_scope_level - symbol.level
@@ -206,7 +202,7 @@ impl IRGenerator {
             SymbolLocation::GlobalLabel(label) => emitter.emit_st(label, source_vreg),
             SymbolLocation::None => emitter.emit_st(fallback_name, source_vreg),
             SymbolLocation::Immediate(_) => {
-                return Err(RegisterError::OutputError(format!(
+                return Err(Pl0Error::codegen_error(format!(
                     "Cannot store to immediate value: {}",
                     fallback_name
                 )));
@@ -214,7 +210,7 @@ impl IRGenerator {
         }
     }
 
-    fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Result<(), RegisterError> {
+    fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         match op {
             "add" => emitter.emit_add(dest, left, right),
@@ -222,14 +218,11 @@ impl IRGenerator {
             "mul" => emitter.emit_mul(dest, left, right),
             "div" => emitter.emit_div(dest, left, right),
             "mod" => emitter.emit_mod(dest, left, right),
-            _ => Err(RegisterError::InvalidInstruction(format!(
-                "Unknown binary op: {}",
-                op
-            ))),
+            _ => Err(Pl0Error::codegen_error(format!("Unknown binary op: {}", op))),
         }
     }
 
-    fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Result<(), RegisterError> {
+    fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         match op {
             "cmp_gt" => emitter.emit_cmp_gt(dest, left, right),
@@ -238,48 +231,45 @@ impl IRGenerator {
             "cmp_ne" => emitter.emit_cmp_ne(dest, left, right),
             "cmp_ge" => emitter.emit_cmp_ge(dest, left, right),
             "cmp_le" => emitter.emit_cmp_le(dest, left, right),
-            _ => Err(RegisterError::InvalidInstruction(format!(
-                "Unknown relational op: {}",
-                op
-            ))),
+            _ => Err(Pl0Error::codegen_error(format!("Unknown relational op: {}", op))),
         }
     }
 
-    fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) -> Result<(), RegisterError> {
+    fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_beqz(vreg, label)
     }
 
-    fn emit_jump(&mut self, label: &str) -> Result<(), RegisterError> {
+    fn emit_jump(&mut self, label: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_jump(label)
     }
 
     // Helper: emit a label
-    fn emit_label(&mut self, label: &str) -> Result<(), RegisterError> {
+    fn emit_label(&mut self, label: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_label(label)
     }
 
     // Helper: create and emit a label, returning its name
-    fn create_and_emit_label(&mut self) -> Result<String, RegisterError> {
+    fn create_and_emit_label(&mut self) -> Pl0Result<String> {
         let label = self.create_label();
         self.emit_label(&label)?;
         Ok(label)
     }
 
     // Helper: evaluate a condition expression
-    fn evaluate_condition(&mut self, condition: &dyn ExpressionNode) -> Result<String, String> {
+    fn evaluate_condition(&mut self, condition: &dyn ExpressionNode) -> Pl0Result<String> {
         self.emit_expression(condition)
     }
 
     // Helper: conditional branch
-    fn emit_conditional_branch(&mut self, vreg: &str, label: &str) -> Result<(), RegisterError> {
+    fn emit_conditional_branch(&mut self, vreg: &str, label: &str) -> Pl0Result<()> {
         self.emit_branch_if_zero(vreg, label)
     }
 
     // Helper: write operation
-    fn emit_write_operation<F>(&mut self, expr_opt: Option<&dyn ExpressionNode>, error_msg: &str, write_fn: F) -> Result<(), String>
+    fn emit_write_operation<F>(&mut self, expr_opt: Option<&dyn ExpressionNode>, error_msg: &str, write_fn: F) -> Pl0Result<()>
     where
         F: FnOnce(&mut Self, &str),
     {
@@ -288,15 +278,14 @@ impl IRGenerator {
             write_fn(self, &vreg);
             Ok(())
         } else {
-            Err(error_msg.to_string())
+            Err(Pl0Error::codegen_error(error_msg))
         }
     }
 
     // Helper: read operation
-    fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Result<(), RegisterError> {
+    fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Pl0Result<()> {
         let symbol = self
-            .get_variable_symbol(identifier, "variable in read")
-            .map_err(Self::to_output_error)?
+            .get_variable_symbol(identifier, "variable in read")?
             .clone();
         let vreg = self.allocate_virtual_register();
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
@@ -304,10 +293,7 @@ impl IRGenerator {
             "read_int" => emitter.emit_read_int(&vreg)?,
             "read_char" => emitter.emit_read_char(&vreg)?,
             _ => {
-                return Err(RegisterError::InvalidInstruction(format!(
-                    "Unknown read operation: {}",
-                    operation
-                )))
+                return Err(Pl0Error::codegen_error(format!("Unknown read operation: {}", operation)))
             }
         }
         self.emit_store_to_symbol(&symbol, &vreg, identifier)?;
@@ -315,31 +301,25 @@ impl IRGenerator {
     }
 
     // Helper: procedure call
-    fn emit_procedure_call(&mut self, identifier: &str) -> Result<(), RegisterError> {
+    fn emit_procedure_call(&mut self, identifier: &str) -> Pl0Result<()> {
         let symbol = self
-            .get_procedure_symbol(identifier, "procedure")
-            .map_err(Self::to_output_error)?;
+            .get_procedure_symbol(identifier, "procedure")?;
         let label = match &symbol.location {
             SymbolLocation::GlobalLabel(label) => label.clone(),
             SymbolLocation::None => identifier.to_string(),
             _ => {
-                return Err(RegisterError::OutputError(format!(
-                    "Procedure {} has no valid address",
-                    identifier
-                )))
+                return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", identifier)))
             }
         };
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_call(&label)
     }
 
-    fn emit_binary_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Result<String, RegisterError> {
+    fn emit_binary_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Pl0Result<String> {
         let left_result = self
-            .emit_expression(left_expr)
-            .map_err(Self::to_output_error)?;
+            .emit_expression(left_expr)?;
         let right_result = self
-            .emit_expression(right_expr)
-            .map_err(Self::to_output_error)?;
+            .emit_expression(right_expr)?;
         let result_vreg = self.allocate_virtual_register();
         let op = match operator {
             "Plus" => "add",
@@ -347,24 +327,17 @@ impl IRGenerator {
             "Multiply" => "mul",
             "Divide" => "div",
             "Modulo" => "mod",
-            _ => {
-                return Err(RegisterError::InvalidInstruction(format!(
-                    "Unknown operator: {}",
-                    operator
-                )))
-            }
+            _ => { return Err(Pl0Error::codegen_error(format!("Unknown operator: {}", operator))) }
         };
         self.emit_binary_op(op, &result_vreg, &left_result, &right_result)?;
         Ok(result_vreg)
     }
 
-    fn emit_relational_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Result<String, RegisterError> {
+    fn emit_relational_operation(&mut self, left_expr: &dyn ExpressionNode, right_expr: &dyn ExpressionNode, operator: &str) -> Pl0Result<String> {
         let left_result = self
-            .emit_expression(left_expr)
-            .map_err(Self::to_output_error)?;
+            .emit_expression(left_expr)?;
         let right_result = self
-            .emit_expression(right_expr)
-            .map_err(Self::to_output_error)?;
+            .emit_expression(right_expr)?;
         let result_vreg = self.allocate_virtual_register();
         let op = match operator {
             "GreaterThan" => "cmp_gt",
@@ -373,12 +346,7 @@ impl IRGenerator {
             "GreaterThanEqual" => "cmp_ge",
             "LessThanEqual" => "cmp_le",
             "!=" | "Hash" => "cmp_ne",
-            _ => {
-                return Err(RegisterError::InvalidInstruction(format!(
-                    "Unknown relational operator: {}",
-                    operator
-                )))
-            }
+            _ => { return Err(Pl0Error::codegen_error(format!("Unknown relational operator: {}", operator))) }
         };
         self.emit_relational_op(op, &result_vreg, &left_result, &right_result)?;
         Ok(result_vreg)
@@ -404,7 +372,7 @@ impl IRGenerator {
     }
 
     // Emit all procedures at the top level (no nesting in IR)
-    fn emit_procedures(&mut self, block: &Block) -> Result<(), RegisterError> {
+    fn emit_procedures(&mut self, block: &Block) -> Pl0Result<()> {
         let mut all_procedures = Vec::new();
         self.collect_all_procedures(block, &mut all_procedures);
         for (name, proc_block) in all_procedures {
@@ -412,7 +380,7 @@ impl IRGenerator {
             self.emit_label(&name)?;
             // Set scope level based on procedure's Level in symbol table
             let proc_symbol = self.symbol_table.get(&name).ok_or_else(|| {
-                RegisterError::OutputError(format!("Procedure {} not found in symbol table", name))
+                Pl0Error::codegen_error(format!("Procedure {} not found in symbol table", name))
             })?;
             self.current_scope_level = proc_symbol.level + 1;
             self.local_var_offset = 16;
@@ -429,10 +397,10 @@ impl IRGenerator {
                 self.in_procedure = true;
                 if let Some(block) = proc_block.as_any().downcast_ref::<crate::block::Block>() {
                     if !block.var_decl.var_decl.is_empty() {
-                        block.var_decl.accept(self).map_err(Self::to_output_error)?;
+                        block.var_decl.accept(self)?;
                     }
                     if let Some(stmt) = &block.statement {
-                        stmt.accept(self).map_err(Self::to_output_error)?;
+                        stmt.accept(self)?;
                     }
                 }
                 self.in_procedure = false;
@@ -442,36 +410,24 @@ impl IRGenerator {
         }
         Ok(())
     }
-
-    // ---------------------------
-    // Error Helpers
-    // ---------------------------
-    fn to_output_error<E: std::fmt::Display>(e: E) -> RegisterError {
-        RegisterError::OutputError(e.to_string())
-    }
-
-    fn to_string_error<E: std::fmt::Display>(e: E) -> String {
-        e.to_string()
-    }
 }
 
 // ---------------------------
 // ASTVisitor Implementation
 // ---------------------------
 impl ASTVisitor for IRGenerator {
-    fn visit_ident(&mut self, ident: &Ident) -> Result<String, String> {
+    fn visit_ident(&mut self, ident: &Ident) -> Pl0Result<String> {
         let symbol = self
             .symbol_table
             .get_at_level(&ident.value, self.current_scope_level)
-            .ok_or_else(|| format!("Undefined identifier: {}", ident.value))?
+            .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined identifier: {}", ident.value)))?
             .clone();
         match symbol.symbol_type {
             SymbolType::Constant(value) => {
                 let vreg = self.allocate_virtual_register();
                 let mut emitter = StringCodeEmitter::new(&mut self.text_output);
                 emitter
-                    .emit_li(&vreg, &value.to_string())
-                    .map_err(|e| e.to_string())?;
+                    .emit_li(&vreg, &value.to_string());
                 Ok(vreg)
             }
             SymbolType::Procedure => {
@@ -479,12 +435,10 @@ impl ASTVisitor for IRGenerator {
                 match &symbol.location {
                     SymbolLocation::GlobalLabel(label) => {
                         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-                        emitter
-                            .emit(&format!("la {}, {}", vreg, label))
-                            .map_err(|e| e.to_string())?;
+                        emitter.emit(&format!("la {}, {}", vreg, label));
                     }
                     _ => {
-                        return Err(format!("Procedure {} has no valid address", ident.value));
+                        return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", ident.value)));
                     }
                 }
                 Ok(vreg)
@@ -492,114 +446,104 @@ impl ASTVisitor for IRGenerator {
             SymbolType::Variable => {
                 let vreg = self.get_or_load_variable(&ident.value)?;
                 if !vreg.starts_with(&self.vreg_prefix) {
-                    return Err(format!("Invalid register format: {}", vreg));
+                    return Err(Pl0Error::codegen_error(format!("Invalid register format: {}", vreg)));
                 }
                 Ok(vreg)
             }
             _ => {
                 // For other types, use the helper function
                 let vreg = self.allocate_virtual_register();
-                self.emit_load_from_symbol(&symbol, &vreg, &ident.value)
-                    .map_err(|e| e.to_string())?;
+                self.emit_load_from_symbol(&symbol, &vreg, &ident.value)?;
                 Ok(vreg)
             }
         }
     }
 
-    fn visit_number(&mut self, number: &Number) -> Result<String, String> {
+    fn visit_number(&mut self, number: &Number) -> Pl0Result<String> {
         let vreg = self.allocate_virtual_register();
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-        emitter
-            .emit_li(&vreg, &number.value.to_string())
-            .map_err(|e| e.to_string())?;
+        emitter.emit_li(&vreg, &number.value.to_string());
         Ok(vreg)
     }
 
-    fn visit_variable(&mut self, variable: &Variable) -> Result<String, String> {
+    fn visit_variable(&mut self, variable: &Variable) -> Pl0Result<String> {
         let vreg = self.get_or_load_variable(&variable.name)?;
         Ok(vreg)
     }
 
-    fn visit_binary_operation(&mut self, binop: &BinOp) -> Result<String, String> {
+    fn visit_binary_operation(&mut self, binop: &BinOp) -> Pl0Result<String> {
         let left_vreg = binop
             .left
             .as_ref()
-            .ok_or_else(|| "Binary operation missing left operand".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("Binary operation missing left operand"))?;
         let right_vreg = binop
             .right
             .as_ref()
-            .ok_or_else(|| "Binary operation missing right operand".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("Binary operation missing right operand"))?;
         self.emit_binary_operation(left_vreg.as_ref(), right_vreg.as_ref(), &binop.operator)
-            .map_err(|e| e.to_string())
     }
 
-    fn visit_while_statement(&mut self, stmt: &WhileStatement) -> Result<(), String> {
-        let start_label = self.create_and_emit_label().map_err(|e| e.to_string())?;
+    fn visit_while_statement(&mut self, stmt: &WhileStatement) -> Pl0Result<()> {
+        let start_label = self.create_and_emit_label()?;
         let end_label = self.create_label();
         let condition = stmt
             .condition
             .as_ref()
-            .ok_or_else(|| "While statement missing condition".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("While statement missing condition"))?;
         let cond_vreg = self.evaluate_condition(condition.as_ref())?;
-        self.emit_conditional_branch(&cond_vreg, &end_label)
-            .map_err(|e| e.to_string())?;
+        self.emit_conditional_branch(&cond_vreg, &end_label)?;
         let body = stmt
             .body
             .as_ref()
-            .ok_or_else(|| "While statement missing body".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("While statement missing body"))?;
         body.accept(self)?;
-        self.emit_jump(&start_label).map_err(|e| e.to_string())?;
-        self.emit_label(&end_label).map_err(|e| e.to_string())?;
+        self.emit_jump(&start_label)?;
+        self.emit_label(&end_label)?;
         Ok(())
     }
 
-    fn visit_condition(&mut self, cond: &OddCondition) -> Result<String, String> {
+    fn visit_condition(&mut self, cond: &OddCondition) -> Pl0Result<String> {
         let expr = cond
             .expr
             .as_ref()
-            .ok_or_else(|| "OddCondition missing expression".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("OddCondition missing expression"))?;
         let num_reg = self.emit_expression(expr.as_ref())?;
         let result_reg = self.allocate_virtual_register();
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-        emitter
-            .emit_is_odd(&result_reg, &num_reg)
-            .map_err(|e| e.to_string())?;
+        emitter.emit_is_odd(&result_reg, &num_reg);
         Ok(result_reg)
     }
 
-    fn visit_relational_condition(&mut self, cond: &RelationalCondition) -> Result<String, String> {
+    fn visit_relational_condition(&mut self, cond: &RelationalCondition) -> Pl0Result<String> {
         let left = cond
             .left
             .as_ref()
-            .ok_or_else(|| "Relational condition missing left operand".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("Relational condition missing left operand"))?;
         let right = cond
             .right
             .as_ref()
-            .ok_or_else(|| "Relational condition missing right operand".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("Relational condition missing right operand"))?;
         self.emit_relational_operation(left.as_ref(), right.as_ref(), &cond.operator)
-            .map_err(|e| e.to_string())
     }
 
-    fn visit_call(&mut self, call: &CallStmt) -> Result<(), String> {
+    fn visit_call(&mut self, call: &CallStmt) -> Pl0Result<()> {
         self.emit_procedure_call(&call.identifier)
-            .map_err(|e| e.to_string())
     }
 
-    fn visit_assign(&mut self, stmt: &AssignStmt) -> Result<(), String> {
+    fn visit_assign(&mut self, stmt: &AssignStmt) -> Pl0Result<()> {
         let symbol = self
             .get_variable_symbol(&stmt.identifier, "variable in assignment")?
             .clone();
         let expr = stmt
             .expr
             .as_ref()
-            .ok_or_else(|| "Assign statement missing expression".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("Assign statement missing expression"))?;
         let vreg = self.emit_expression(expr.as_ref())?;
-        self.emit_store_to_symbol(&symbol, &vreg, &stmt.identifier)
-            .map_err(|e| e.to_string())?;
+        self.emit_store_to_symbol(&symbol, &vreg, &stmt.identifier)?;
         Ok(())
     }
 
-    fn visit_begin(&mut self, expr: &BeginStmt) -> Result<(), String> {
+    fn visit_begin(&mut self, expr: &BeginStmt) -> Pl0Result<()> {
         for stmt in &expr.stmts {
             if let Some(ref stmt) = stmt {
                 stmt.accept(self)?;
@@ -608,46 +552,45 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_if(&mut self, expr: &IfStmt) -> Result<(), String> {
+    fn visit_if(&mut self, expr: &IfStmt) -> Pl0Result<()> {
         let else_label = self.create_label();
         let end_label = self.create_label();
         let condition = expr
             .condition
             .as_ref()
-            .ok_or_else(|| "If statement missing condition".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("If statement missing condition"))?;
         let cond_vreg = self.evaluate_condition(condition.as_ref())?;
-        self.emit_conditional_branch(&cond_vreg, &else_label)
-            .map_err(|e| e.to_string())?;
+        self.emit_conditional_branch(&cond_vreg, &else_label)?;
         let then_branch = expr
             .then_branch
             .as_ref()
-            .ok_or_else(|| "If statement missing then branch".to_string())?;
+            .ok_or_else(|| Pl0Error::codegen_error("If statement missing then branch"))?;
         then_branch.accept(self)?;
         if let Some(ref else_branch) = expr.else_branch {
-            self.emit_jump(&end_label).map_err(|e| e.to_string())?;
-            self.emit_label(&else_label).map_err(|e| e.to_string())?;
+            self.emit_jump(&end_label)?;
+            self.emit_label(&else_label)?;
             else_branch.accept(self)?;
-            self.emit_label(&end_label).map_err(|e| e.to_string())?;
+            self.emit_label(&end_label)?;
         } else {
-            self.emit_jump(&end_label).map_err(|e| e.to_string())?;
-            self.emit_label(&else_label).map_err(|e| e.to_string())?;
-            self.emit_label(&end_label).map_err(|e| e.to_string())?;
+            self.emit_jump(&end_label)?;
+            self.emit_label(&else_label)?;
+            self.emit_label(&end_label)?;
         }
         Ok(())
     }
 
-    fn visit_write_int(&mut self, stmt: &WriteInt) -> Result<(), String> {
+    fn visit_write_int(&mut self, stmt: &WriteInt) -> Pl0Result<()> {
         if let Some(expr) = stmt.expr.as_ref() {
             let vreg = self.emit_expression(expr.as_ref())?;
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-            emitter.emit_write_int(&vreg).map_err(|e| e.to_string())?;
+            emitter.emit_write_int(&vreg)?;
             Ok(())
         } else {
-            Err("WriteInt statement missing expression".to_string())
+            Err(Pl0Error::codegen_error("WriteInt statement missing expression"))
         }
     }
 
-    fn visit_write_char(&mut self, stmt: &WriteChar) -> Result<(), String> {
+    fn visit_write_char(&mut self, stmt: &WriteChar) -> Pl0Result<()> {
         self.emit_write_operation(
             stmt.expr.as_ref().map(|e| e.as_ref()),
             "WriteChar statement missing expression",
@@ -655,35 +598,34 @@ impl ASTVisitor for IRGenerator {
                 let mut emitter = StringCodeEmitter::new(&mut generator.text_output);
                 emitter.emit_write_char(vreg).unwrap();
             },
-        )
+        )?;
+        Ok(())
     }
 
-    fn visit_write_str(&mut self, stmt: &WriteStr) -> Result<(), String> {
+    fn visit_write_str(&mut self, stmt: &WriteStr) -> Pl0Result<()> {
         if stmt.expr.is_empty() {
-            return Err("WriteStr statement missing expression".to_string());
+            return Err(Pl0Error::codegen_error("WriteStr statement missing expression"));
         }
         let mut emitter = StringCodeEmitter::new(&mut self.text_output);
         emitter.emit_write_str(&stmt.expr).unwrap();
         Ok(())
     }
 
-    fn visit_read_int(&mut self, expr: &ReadInt) -> Result<(), String> {
+    fn visit_read_int(&mut self, expr: &ReadInt) -> Pl0Result<()> {
         self.emit_read_operation("read_int", &expr.identifier)
-            .map_err(|e| e.to_string())
     }
 
-    fn visit_read_char(&mut self, expr: &ReadChar) -> Result<(), String> {
+    fn visit_read_char(&mut self, expr: &ReadChar) -> Pl0Result<()> {
         self.emit_read_operation("read_char", &expr.identifier)
-            .map_err(|e| e.to_string())
     }
 
-    fn visit_exit(&mut self, _expr: &Exit) -> Result<(), String> {
+    fn visit_exit(&mut self, _expr: &Exit) -> Pl0Result<()> {
         self.exit_emitted = true;
-        self.system_exit(0).map_err(|e| e.to_string())?;
+        self.system_exit(0)?;
         Ok(())
     }
 
-    fn visit_const(&mut self, expr: &ConstDecl) -> Result<(), String> {
+    fn visit_const(&mut self, expr: &ConstDecl) -> Pl0Result<()> {
         for (id, num) in &expr.const_decl {
             let mut emitter = StringCodeEmitter::new(&mut self.data_output);
             emitter.emit_const(id, &num.to_string()).unwrap();
@@ -692,7 +634,7 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_var_decl(&mut self, expr: &VarDecl) -> Result<(), String> {
+    fn visit_var_decl(&mut self, expr: &VarDecl) -> Pl0Result<()> {
         for var_name in &expr.var_decl {
             if self.in_procedure {
                 // Local variable in procedure - use stack offset
@@ -717,16 +659,16 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Result<(), String> {
+    fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Pl0Result<()> {
         if !self.in_procedure {
             for (name, proc_block) in &expr.procedurs {
                 self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.clone()), true);
-                self.emit_label(name).map_err(|e| e.to_string())?;
+                self.emit_label(name)?;
                 // Set scope level based on procedure's Level in symbol table
                 let proc_symbol = self
                     .symbol_table
                     .get_at_level(name, 0)
-                    .ok_or_else(|| format!("Procedure {} not found in symbol table", name))?;
+                    .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} not found in symbol table", name)))?;
                 self.current_scope_level = proc_symbol.level + 1;
                 self.local_var_offset = 16;
                 let mut stack_slots = 0;
@@ -737,22 +679,20 @@ impl ASTVisitor for IRGenerator {
                 }
                 let stack_size = ((stack_slots * 8 + 8 + 15) / 16) * 16 + 8;
                 let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-                emitter
-                    .emit_proc_enter(stack_size)
-                    .map_err(|e| e.to_string())?;
+                emitter.emit_proc_enter(stack_size).unwrap();
                 if let Some(block) = proc_block {
                     self.in_procedure = true;
                     block.accept(self)?;
                     self.in_procedure = false;
                 }
                 let mut emitter = StringCodeEmitter::new(&mut self.text_output);
-                emitter.emit_proc_exit().map_err(|e| e.to_string())?;
+                emitter.emit_proc_exit().unwrap();
             }
         }
         Ok(())
     }
 
-    fn visit_block(&mut self, block: &Block) -> Result<(), String> {
+    fn visit_block(&mut self, block: &Block) -> Pl0Result<()> {
         if !self.in_procedure {
             self.local_var_offset = 16; // Reset stack offset for main
             self.current_scope_level = 0;
@@ -763,18 +703,15 @@ impl ASTVisitor for IRGenerator {
         if !block.var_decl.var_decl.is_empty() {
             block.var_decl.accept(self)?;
         }
-
         // Recursively emit all procedures at the top level
         if !self.in_procedure {
             let original_scope_level = self.current_scope_level;
-            self.emit_procedures(block)
-                .map_err(|e| e.to_string())?;
+            self.emit_procedures(block)?;
             self.current_scope_level = original_scope_level;
         }
-
         if let Some(stmt) = &block.statement {
             if !self.in_procedure && !self.main_emitted {
-                self.emit_label("main").map_err(|e| e.to_string())?;
+                self.emit_label("main")?;
                 self.main_emitted = true;
                 // Emit stack variables for local variables
                 let mut stack_vars = Vec::new();
@@ -802,7 +739,7 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_program(&mut self, expr: &Program) -> Result<(), String> {
+    fn visit_program(&mut self, expr: &Program) -> Pl0Result<()> {
         if let Some(ref block) = &expr.block {
             block.accept(self)?;
         }

@@ -9,6 +9,7 @@ pub mod code_emitter;
 pub mod codegen;
 pub mod config;
 pub mod decl;
+pub mod errors;
 pub mod expression;
 pub mod io;
 pub mod ir_dispatch;
@@ -41,30 +42,25 @@ impl Default for LineNumber {
     }
 }
 
-pub fn read(filename: &Path) -> Result<String, String> {
+use crate::errors::{Pl0Error, Pl0Result};
+
+pub fn read(filename: &Path) -> Pl0Result<String> {
     let path = Path::new(filename);
 
     match path.extension() {
         Some(ext) => {
             if !ext.eq("pl0") {
-                println!("Error: File must have a .pl0 extension");
-                exit(1);
+                return Err(Pl0Error::FileReadError("File must have a .pl0 extension".to_string()));
             }
         }
         None => {
-            println!("Error: File must have a .pl0 extension");
-            exit(1);
+            return Err(Pl0Error::FileReadError("File must have a .pl0 extension".to_string()));
         }
     }
     // Open the path in read-only mode, returns `io::Result<File>`
-    let mut file = match File::open(path) {
-        Err(why) => return Err(format!("couldn't open file: {why}")),
-        Ok(file) => file,
-    };
+    let mut file = File::open(path)?;
     // Read the file contents into a string, returns `io::Result<usize>`
     let mut contents = String::new();
-    match file.read_to_string(&mut contents) {
-        Err(why) => Err(format!("couldn't read: {why}")),
-        Ok(_) => Ok(contents),
-    }
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
 }

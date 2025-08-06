@@ -1,7 +1,9 @@
 use crate::assembly_generator::RegisterAllocator;
-use crate::register_allocator_common::{Register, RegisterConstraints, RegisterError};
+use crate::register_allocator_common::{Register, RegisterConstraints};
 use std::collections::HashMap;
 use std::fmt;
+use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
@@ -178,20 +180,20 @@ impl X86_64RegisterAllocator {
     pub fn alloc(
         &mut self,
         v_reg: &Register<RegisterName>,
-    ) -> Result<Register<RegisterName>, RegisterError> {
+    ) -> Pl0Result<Register<RegisterName>> {
         // Try to allocate a free register
         if let Some(p_reg) = self.free_list.pop() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 if !reg.name.get_constraints().can_allocate {
                     self.free_list.push(p_reg);
-                    return Err(RegisterError::NoRegistersAvailable);
+                    return Err(Pl0Error::NoRegistersAvailable);
                 }
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = v_reg.next_uses.clone();
                 reg.address = v_reg.address;
                 return Ok(reg.clone());
             } else {
-                return Err(RegisterError::NoRegistersAvailable);
+                return Err(Pl0Error::NoRegistersAvailable);
             }
         }
         // No free register: spill one
@@ -202,7 +204,7 @@ impl X86_64RegisterAllocator {
             .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg)))
             .filter(|(_, reg)| reg.name.get_constraints().can_spill)
             .max_by_key(|(_, reg)| reg.next_uses.first().cloned().unwrap_or(i32::MAX))
-            .ok_or(RegisterError::NoRegistersAvailable)?;
+            .ok_or(Pl0Error::NoRegistersAvailable)?;
 
         // TODO: Emit spill code for _spilled if needed
 
@@ -212,11 +214,11 @@ impl X86_64RegisterAllocator {
             reg.address = v_reg.address;
             Ok(reg.clone())
         } else {
-            Err(RegisterError::NoRegistersAvailable)
+            Err(Pl0Error::NoRegistersAvailable)
         }
     }
 
-    pub fn ensure(&mut self, v_reg: &str) -> Result<usize, RegisterError> {
+    pub fn ensure(&mut self, v_reg: &str) -> Pl0Result<usize> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
             for mapped_reg in self.reg_map.iter().flatten() {
                 if mapped_reg.v_reg == reg.v_reg {
@@ -229,7 +231,7 @@ impl X86_64RegisterAllocator {
             let reg = self.alloc(&vreg_cloned)?;
             return Ok(reg.p_reg);
         } else {
-            Err(RegisterError::UnknownRegister(v_reg.to_string()))
+            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
         }
     }
 }
@@ -239,7 +241,7 @@ impl RegisterAllocator for X86_64RegisterAllocator {
         X86_64RegisterAllocator::free(self, p_reg);
     }
 
-    fn alloc(&mut self, v_reg: &str, _output: &mut String) -> Result<usize, RegisterError> {
+    fn alloc(&mut self, v_reg: &str, _output: &mut String) -> Pl0Result<usize> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
             // Check if already allocated
             for mapped_reg in self.reg_map.iter().flatten() {
@@ -252,14 +254,11 @@ impl RegisterAllocator for X86_64RegisterAllocator {
             let allocated_reg = self.alloc(&reg_cloned)?;
             Ok(allocated_reg.p_reg)
         } else {
-            Err(RegisterError::UnknownRegister(format!(
-                "Virtual register '{}' not found",
-                v_reg
-            )))
+            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
         }
     }
 
-    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
             for mapped_reg in self.reg_map.iter().flatten() {
                 if mapped_reg.v_reg == reg.v_reg {
@@ -272,7 +271,7 @@ impl RegisterAllocator for X86_64RegisterAllocator {
             let reg = self.alloc(&vreg_cloned)?;
             return Ok(reg.p_reg);
         } else {
-            Err(RegisterError::UnknownRegister(v_reg.to_string()))
+            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
         }
     }
 

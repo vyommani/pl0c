@@ -24,16 +24,17 @@
 */
 
 use crate::visiters::ASTVisitor;
+use crate::errors::Pl0Result;
 use std::any::Any;
 
 pub trait Node {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String>;
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()>;
     fn print(&self);
     fn as_any(&self) -> &dyn Any;
 }
 
 pub trait ExpressionNode: Node {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String>;
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String>;
 }
 
 pub struct Variable {
@@ -49,7 +50,7 @@ impl Variable {
 }
 
 impl Node for Variable {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         // For Node trait, we ignore the return value
         let _ = visitor.visit_variable(self);
         Ok(())
@@ -65,7 +66,7 @@ impl Node for Variable {
 }
 
 impl ExpressionNode for Variable {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<String, String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_variable(self)
     }
 }
@@ -81,7 +82,7 @@ impl Exit {
 }
 
 impl Node for Exit {
-    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Result<(), String> {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_exit(self)
     }
     fn print(&self) {

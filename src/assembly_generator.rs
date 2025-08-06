@@ -1,8 +1,8 @@
 use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
 use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
 use crate::register_allocator_arm64::Arm64RegisterAllocator;
-use crate::register_allocator_common::RegisterError;
 use crate::register_allocator_x86_64::X86_64RegisterAllocator;
+use crate::errors::{Pl0Error, Pl0Result};
 use std::any::Any;
 use std::io;
 
@@ -13,8 +13,8 @@ pub enum TargetArch {
 
 pub trait RegisterAllocator {
     fn free(&mut self, p_reg: usize);
-    fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError>;
-    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError>;
+    fn alloc(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize>;
+    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize>;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn get_vreg(&mut self, vreg: &str) -> Option<&dyn std::any::Any>;
 }
@@ -25,12 +25,12 @@ pub trait AssemblyEmitter {
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
         output: &mut String,
-    ) -> Result<(), io::Error>;
+    ) -> Pl0Result<()>;
     fn compute_vreg_next_uses(
         &self,
         ir: &[String],
         allocator: &mut dyn RegisterAllocator,
-    ) -> Result<(), RegisterError>;
+    ) -> Pl0Result<()>;
 }
 
 #[derive()]
@@ -67,15 +67,15 @@ impl AssemblyGenerator {
         &self.assembly_output
     }
 
-    pub fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+    pub fn alloc(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
         self.allocator.alloc(v_reg, output)
     }
 
-    pub fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+    pub fn ensure(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
         self.allocator.ensure(v_reg, output)
     }
 
-    pub fn emit_assembly(&mut self, ir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn emit_assembly(&mut self, ir: &str) -> Pl0Result<()> {
         self.emitter.compute_vreg_next_uses(
             &ir.lines()
                 .map(|line| line.to_string())

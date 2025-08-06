@@ -9,8 +9,10 @@ use crate::register_pool::RegisterPool;
 use crate::spill_manager::SpillManager;
 use crate::{
     assembly_generator::RegisterAllocator,
-    register_allocator_common::{Register, RegisterConstraints, RegisterError},
+    register_allocator_common::{Register, RegisterConstraints},
 };
+use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
@@ -246,7 +248,7 @@ impl Arm64RegisterAllocator {
         v_reg: &Register<RegisterName>,
         vreg_name: &str,
         emitter: &mut dyn CodeEmitter,
-    ) -> Result<Register<RegisterName>, RegisterError> {
+    ) -> Pl0Result<Register<RegisterName>> {
         // Update next_uses based on current instruction
         let mut next_uses = v_reg.next_uses.clone();
         next_uses.retain(|&use1| use1 >= self.current_instruction);
@@ -328,12 +330,12 @@ impl Arm64RegisterAllocator {
         let spill_idx = spill_candidates
             .pop()
             .map(|Reverse((_, i))| i)
-            .ok_or(RegisterError::NoRegistersAvailable)?;
+            .ok_or(Pl0Error::codegen_error("No registers available"))?;
 
         let reg_name = self.reg_map[spill_idx]
             .as_ref()
             .map(|reg| reg.name.clone())
-            .ok_or(RegisterError::NoRegistersAvailable)?;
+            .ok_or(Pl0Error::codegen_error("No registers available"))?;
         let spill_offset = self.spill_manager.allocate_slot();
         emitter.emit(&format!("str {}, [sp, -{}]", reg_name, spill_offset))?;
 
@@ -350,7 +352,7 @@ impl Arm64RegisterAllocator {
             self.live_range_manager.remove_range(old_v_reg);
             Ok(reg.clone())
         } else {
-            Err(RegisterError::NoRegistersAvailable)
+            Err(Pl0Error::NoRegistersAvailable)
         }
     }
 
@@ -370,18 +372,18 @@ impl RegisterAllocator for Arm64RegisterAllocator {
         self.free(p_reg);
     }
 
-    fn alloc(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+    fn alloc(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
         if let Some(reg) = self.vreg_map.get(v_reg).cloned() {
             let mut emitter = StringCodeEmitter::new(output);
             let allocated = self.alloc(&reg, v_reg, &mut emitter)?;
             emitter.flush()?;
             Ok(allocated.p_reg)
         } else {
-            Err(RegisterError::UnknownRegister(v_reg.to_string()))
+            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
         }
     }
 
-    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Result<usize, RegisterError> {
+    fn ensure(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
         if let Some(reg) = self.vreg_map.get(v_reg) {
             for mapped_reg in self.reg_map.iter().flatten() {
                 if mapped_reg.v_reg == reg.v_reg && mapped_reg.spill_offset.is_none() {
@@ -403,7 +405,7 @@ impl RegisterAllocator for Arm64RegisterAllocator {
             emitter.flush()?;
             Ok(allocated.p_reg)
         } else {
-            Err(RegisterError::UnknownRegister(v_reg.to_string()))
+            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
         }
     }
 
