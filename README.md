@@ -1,92 +1,53 @@
 PL/0 Compiler
 
-This project implements a simple compiler for the PL/0 programming language in Rust. The compiler includes a lexer, parser, abstract syntax tree (AST) generation, and a code generator to output PL/0 assembly code.
+A Rust-based compiler for the PL/0 programming language, designed for educational purposes to demonstrate compiler construction. This project implements a lexer, parser, abstract syntax tree (AST) generation, intermediate representation (IR) generation, and code generation targeting x86-64 & ARM64 assembly.
 Table of Contents
-    Introduction
-    PL/0 Programming Language
-        Syntax
-        Sample Program
-    Features
-    Directory Structure
-    Getting Started
-    Usage
-    Examples
-    Contributing
-    License
+    Introduction (#introduction)
+    PL/0 Language Syntax (#pl0-language-syntax)
+    Sample Program (#sample-program)
+    Features (#features)
+    Directory Structure (#directory-structure)
+    Getting Started (#getting-started)
+    Usage (#usage)
+    Roadmap (#roadmap)
+    Contributing (#contributing)
+    License (#license)
+
 
 Introduction
 
-PL/0 is a small educational programming language used to teach compiler construction. This project provides a basic implementation of a PL/0 compiler in Rust, demonstrating the main components of a compiler, including lexical analysis, parsing, AST construction, and code generation.
-PL/0 Programming Language
-Syntax
+PL/0 is a minimalist programming language used to teach compiler design principles. This project provides a Rust implementation of a PL/0 compiler, showcasing key compiler components: lexical analysis, parsing, AST construction, IR generation, and code generation for x86-64 assembly. The compiler is a work-in-progress, with active development on IR optimization and assembly emission.
 
-PL/0 is a simple, structured programming language that includes basic constructs such as variables, arithmetic operations, conditionals, and loops. The syntax is similar to Pascal and is designed to be easy to parse and understand. Below are some of the key constructs in PL/0:
+PL/0 Programming Language Syntax
 
-    Variable Assignment: x := 5;
-    Arithmetic Operations: x := 5 + 3;
-    Conditionals: if x > 5 then y := 10 else y := 20;
-    Loops: while x < 10 do x := x + 1;
+PL/0 supports structured programming with variables, arithmetic, conditionals, loops, and procedures. Its syntax is inspired by Pascal, making it simple to parse and understand. Below are the key constructs:
 
 Sample Program
 
-pl0
-
 var x, y, z;
-
 begin
-    x := 1;
-    
-    y := 2;
-    
-    z := x + y;
-    
+    x := 1;          { Initialize x to 1 }
+    y := 2;          { Initialize y to 2 }
+    z := x + y;      { Compute sum }
     if z > 2 then
-    
-        z := z - 1
-        
+        z := z - 1   { Decrement if sum > 2 }
     else
-    
-        z := z + 1;
-    
-    while x < 10 do
-        x := x + 1;        
+        z := z + 1;  { Increment otherwise }
+    while x < 10 do  { Loop until x reaches 10 }
+        x := x + 1;
+    writeInt(z);     { Output z }
 end.
 
 This sample program demonstrates variable declarations, assignments, conditionals, and loops in PL/0.
 
 Features
-
-    Lexer: Converts source code into tokens.
-    Parser: Parses tokens into an abstract syntax tree (AST).
-    AST: Represents the program's structure in a tree format.
-    Code Generator: Translates the AST into IR(work in progress).
-
-Directory Structure
-
-css
-
-src/
-
-1-> ast.rs
-
-2-> codegen.rs
-
-3-> lexer.rs
-
-4-> main.rs
-
-5-> parser.rs
-
-6-> token.rs
-
-7-> lib.rs
-
-    main.rs: Entry point of the application.
-    lexer.rs: Lexical analyzer that tokenizes the input source code.
-    parser.rs: Parses tokens into an AST(not yet implemented).
-    token.rs: Defines the tokens used by the lexer and parser.
-    ast.rs: Defines the abstract syntax tree (AST) nodes and the visitor pattern(Not yet implemented).
-    code_generator.rs: Generates PL/0 assembly code from the AST(Not yet implemented).
+    Lexer: Tokenizes PL/0 source code into a stream of tokens.
+    Parser: Constructs an AST from tokens (in progress).
+    AST: Represents program structure using a tree (partially implemented).
+    IR Generator: Translates AST to intermediate representation (work in progress).
+    Code Generator: Emits x86-64 assembly with register allocation and spilling (in development).
+    Error Handling: Provides detailed error messages for invalid syntax or semantics.
+    Static Link Support: Handles nested procedures via static links.
     
 
 Getting Started
@@ -109,7 +70,7 @@ To compile and run the PL/0 compiler:
 
 bash
 
-cargo run
+cargo build
 
 Contributions are welcome! Please open an issue or submit a pull request if you have any suggestions or improvements.
 
