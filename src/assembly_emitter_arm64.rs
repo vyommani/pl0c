@@ -72,13 +72,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
             let live_across_call = call_indices
                 .iter()
                 .any(|&call_idx| call_idx >= live_range.0 && call_idx <= live_range.1);
-            let mut reg = Register::new(
-                usize::MAX,
-                i,
-                RegisterName::SP,
-                uses.iter().map(|u| *u as i32).collect(),
-                0,
-            );
+            let mut reg = Register::new(usize::MAX, i, RegisterName::SP, uses.iter().map(|u| *u as i32).collect(), 0);
             reg.live_across_call = live_across_call;
             if let Some(alloc) = allocator
                 .as_any_mut()
@@ -114,39 +108,15 @@ impl Arm64AssemblyEmitter {
         if imm >= 0 && imm <= 0xFFFF {
             write_line(output, format_args!("    mov x{}, #{}\n", reg, imm_val))?;
         } else {
-            write_line(
-                output,
-                format_args!("    movz x{}, #{}\n", reg, imm_val & 0xFFFF),
-            )?;
+            write_line(output, format_args!("    movz x{}, #{}\n", reg, imm_val & 0xFFFF))?;
             if (imm_val >> 16) & 0xFFFF != 0 {
-                write_line(
-                    output,
-                    format_args!(
-                        "    movk x{}, #{}, lsl #16\n",
-                        reg,
-                        (imm_val >> 16) & 0xFFFF
-                    ),
-                )?;
+                write_line(output, format_args!("    movk x{}, #{}, lsl #16\n", reg, (imm_val >> 16) & 0xFFFF))?;
             }
             if (imm_val >> 32) & 0xFFFF != 0 {
-                write_line(
-                    output,
-                    format_args!(
-                        "    movk x{}, #{}, lsl #32\n",
-                        reg,
-                        (imm_val >> 32) & 0xFFFF
-                    ),
-                )?;
+                write_line(output, format_args!("    movk x{}, #{}, lsl #32\n", reg, (imm_val >> 32) & 0xFFFF))?;
             }
             if (imm_val >> 48) & 0xFFFF != 0 {
-                write_line(
-                    output,
-                    format_args!(
-                        "    movk x{}, #{}, lsl #48\n",
-                        reg,
-                        (imm_val >> 48) & 0xFFFF
-                    ),
-                )?;
+                write_line(output, format_args!("    movk x{}, #{}, lsl #48\n", reg, (imm_val >> 48) & 0xFFFF))?;
             }
         }
         Ok(())
@@ -224,10 +194,7 @@ impl Arm64AssemblyEmitter {
         for line in ir {
             let line = line.trim();
             if line.starts_with("var ") {
-                let vars = line[4..]
-                    .split(',')
-                    .map(|v| v.trim())
-                    .filter(|v| !v.is_empty());
+                let vars = line[4..].split(',').map(|v| v.trim()).filter(|v| !v.is_empty());
                 for v in vars {
                     variables.insert(v.to_string());
                 }
@@ -320,8 +287,7 @@ impl Arm64AssemblyEmitter {
 
             // Handle labels
             if line.ends_with(':') {
-                let (in_proc_result, label) =
-                    self.process_label(line, ir, i, &mut in_proc, &mut current_proc);
+                let (in_proc_result, label) = self.process_label(line, ir, i, &mut in_proc, &mut current_proc);
                 let output = if in_proc_result {
                     &mut *proc_output
                 } else {
@@ -372,18 +338,12 @@ impl Arm64AssemblyEmitter {
         // Ensure stack alignment to 16 bytes
         let aligned_stack_size = Self::align_stack_size(main_stack_size);
         if aligned_stack_size > 0 {
-            write_line(
-                &mut new_main_output,
-                format_args!("    sub sp, sp, #{}\n", aligned_stack_size),
-            )?;
+            write_line(&mut new_main_output, format_args!("    sub sp, sp, #{}\n", aligned_stack_size))?;
         }
         new_main_output.push_str(main_output);
         // Always emit stack deallocation and epilogue for ABI compliance
         if aligned_stack_size > 0 {
-            write_line(
-                &mut new_main_output,
-                format_args!("    add sp, sp, #{}\n", aligned_stack_size),
-            )?;
+            write_line(&mut new_main_output, format_args!("    add sp, sp, #{}\n", aligned_stack_size))?;
         }
         Self::emit_epilogue(&mut new_main_output, allocator)?;
         Ok(new_main_output)
@@ -422,10 +382,7 @@ impl Arm64AssemblyEmitter {
             let spill_space = alloc.get_spill_space_needed();
             if spill_space > 0 {
                 let aligned_spill_space = ((spill_space + 15) / 16) * 16;
-                write_line(
-                    output,
-                    format_args!("    sub sp, sp, #{}\n", aligned_spill_space),
-                )?;
+                write_line(output, format_args!("    sub sp, sp, #{}\n", aligned_spill_space))?;
             }
         }
         Ok(())
@@ -440,10 +397,7 @@ impl Arm64AssemblyEmitter {
             let spill_space = alloc.get_spill_space_needed();
             if spill_space > 0 {
                 let aligned_spill_space = ((spill_space + 15) / 16) * 16;
-                write_line(
-                    output,
-                    format_args!("    add sp, sp, #{}\n", aligned_spill_space),
-                )?;
+                write_line(output, format_args!("    add sp, sp, #{}\n", aligned_spill_space))?;
             }
 
             let mut regs: Vec<_> = alloc.get_used_callee_saved().iter().copied().collect();
@@ -502,10 +456,7 @@ impl Arm64AssemblyEmitter {
             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
         }
         write_line(output, format_args!("    adrp x{}, {}@PAGE\n", reg, var))?;
-        write_line(
-            output,
-            format_args!("    add x{}, x{}, {}@PAGEOFF\n", reg, reg, var),
-        )?;
+        write_line(output, format_args!("    add x{}, x{}, {}@PAGEOFF\n", reg, reg, var))?;
         Ok(())
     }
 
@@ -574,8 +525,7 @@ impl Arm64AssemblyEmitter {
                     return Err(Pl0Error::CodeGenError { message: format!("Operation {} not supported", op), line: None, });
                 }
             };
-            let pdst = allocator
-                .alloc(dst, output)?;
+            let pdst = allocator.alloc(dst, output)?;
             self.validate_register(pdst, "x12 cannot be used for computation")?;
             write_line(output, format_args!("    mov x{}, #{}\n", pdst, result))?;
             if self.is_dead_after(dst, idx, allocator) {
@@ -584,8 +534,7 @@ impl Arm64AssemblyEmitter {
             return Ok(());
         }
 
-        let psrc1 = allocator
-            .ensure(src1, output)?;
+        let psrc1 = allocator.ensure(src1, output)?;
         self.validate_register(psrc1, "x12 cannot be used for computation")?;
 
         // Reuse psrc1 for dst if temporary and dead
@@ -597,8 +546,7 @@ impl Arm64AssemblyEmitter {
                 })) {
             psrc1
         } else {
-            allocator
-                .alloc(dst, output)?
+            allocator.alloc(dst, output)?
         };
         self.validate_register(pdst, "x12 cannot be used for computation")?;
 
@@ -606,20 +554,14 @@ impl Arm64AssemblyEmitter {
             match op {
                 "add" | "sub" => {
                     if imm >= -512 && imm <= 511 {
-                        write_line(
-                            output,
-                            format_args!("    {} x{}, x{}, #{}\n", op, pdst, psrc1, imm),
-                        )?;
+                        write_line(output, format_args!("    {} x{}, x{}, #{}\n", op, pdst, psrc1, imm))?;
                     } else {
                         let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
                         if temp_reg == 12 {
                             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                         }
                         write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
-                        write_line(
-                            output,
-                            format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg),
-                        )?;
+                        write_line(output, format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg))?;
                     }
                 }
                 "sdiv" | "mul" => {
@@ -628,25 +570,18 @@ impl Arm64AssemblyEmitter {
                         return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                     }
                     write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
-                    write_line(
-                        output,
-                        format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg),
-                    )?;
+                    write_line(output, format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, temp_reg))?;
                 }
                 _ => {
                     return Err(Pl0Error::CodeGenError { message: format!("Operation {} with immediate not supported", op), line: None, });
                 }
             }
         } else {
-            let psrc2 = allocator
-                .ensure(src2, output)?;
+            let psrc2 = allocator.ensure(src2, output)?;
             if psrc2 == 12 {
                 return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
             }
-            write_line(
-                output,
-                format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, psrc2),
-            )?;
+            write_line(output,format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, psrc2))?;
             if self.is_dead_after(src2, idx, allocator) {
                 allocator.free(psrc2);
             }
@@ -665,12 +600,9 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
-        let psrc1 = allocator
-            .ensure(src1, output)?;
-        let psrc2 = allocator
-            .ensure(src2, output)?;
-        let pdst = allocator
-            .alloc(dst, output)?;
+        let psrc1 = allocator.ensure(src1, output)?;
+        let psrc2 = allocator.ensure(src2, output)?;
+        let pdst = allocator.alloc(dst, output)?;
         // Never use x12 for computation
         if psrc1 == 12 || psrc2 == 12 || pdst == 12 {
             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
@@ -702,10 +634,8 @@ impl Arm64AssemblyEmitter {
     fn emit_is_odd(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let psrc = allocator
-            .ensure(src, output)?;
-        let pdst = allocator
-            .alloc(dst, output)?;
+        let psrc = allocator.ensure(src, output)?;
+        let pdst = allocator.alloc(dst, output)?;
         write_line(output, format_args!("    and x{}, x{}, #1\n", pdst, psrc))?;
         if self.is_dead_after(src, idx, allocator) {
             allocator.free(psrc);
@@ -725,8 +655,7 @@ impl Arm64AssemblyEmitter {
     fn emit_beqz(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let src = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let label = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let psrc = allocator
-            .ensure(src, output)?;
+        let psrc = allocator.ensure(src, output)?;
         write_line(output, format_args!("    cbz x{}, {}\n", psrc, label))?;
         if self.is_dead_after(src, idx, allocator) {
             allocator.free(psrc);
@@ -744,14 +673,8 @@ impl Arm64AssemblyEmitter {
 
     fn emit_exit(&self, output: &mut String) -> Pl0Result<()> {
         write_line(output, format_args!("    mov x0, #0\n"))?;
-        write_line(
-            output,
-            format_args!("    movz x16, #(0x2000001 & 0xFFFF)\n"),
-        )?;
-        write_line(
-            output,
-            format_args!("    movk x16, #((0x2000001 >> 16) & 0xFFFF), lsl #16\n"),
-        )?;
+        write_line(output,format_args!("    movz x16, #(0x2000001 & 0xFFFF)\n"))?;
+        write_line(output, format_args!("    movk x16, #((0x2000001 >> 16) & 0xFFFF), lsl #16\n"))?;
         write_line(output, format_args!("    svc #0\n"))?;
         Ok(())
     }
@@ -815,27 +738,18 @@ impl Arm64AssemblyEmitter {
                 if let Some(proc_name) = current_proc.clone() {
                     proc_stack.push(proc_name);
                 }
-                let stack_size = rest
-                    .get(0)
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(0);
+                let stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
                 let aligned_stack_size = Self::align_stack_size(stack_size);
                 proc_stack_sizes.push(aligned_stack_size);
                 Arm64AssemblyEmitter::emit_prologue(target_output, allocator)?;
                 if aligned_stack_size > 0 {
-                    write_line(
-                        target_output,
-                        format_args!("    sub sp, sp, #{}\n", aligned_stack_size),
-                    )?;
+                    write_line(target_output, format_args!("    sub sp, sp, #{}\n", aligned_stack_size))?;
                 }
             }
             IROp::ProcExit => {
                 let stack_size = proc_stack_sizes.pop().unwrap_or(0);
                 if stack_size > 0 {
-                    write_line(
-                        target_output,
-                        format_args!("    add sp, sp, #{}\n", stack_size),
-                    )?;
+                    write_line(target_output, format_args!("    add sp, sp, #{}\n", stack_size))?;
                 }
                 Arm64AssemblyEmitter::emit_epilogue(target_output, allocator)?;
                 proc_stack.pop();
@@ -856,26 +770,17 @@ impl Arm64AssemblyEmitter {
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
 
-        let psrc1 = allocator
-            .ensure(src1, output)?;
-        let psrc2 = allocator
-            .ensure(src2, output)?;
-        let pdst = allocator
-            .alloc(dst, output)?;
+        let psrc1 = allocator.ensure(src1, output)?;
+        let psrc2 = allocator.ensure(src2, output)?;
+        let pdst = allocator.alloc(dst, output)?;
 
         // Use a temp register for the quotient (let's use x11, but ensure it's not used for vregs)
         let temp = 11usize;
 
         // sdiv x11, x<src1>, x<src2>
-        write_line(
-            output,
-            format_args!("    sdiv x{}, x{}, x{}\n", temp, psrc1, psrc2),
-        )?;
+        write_line(output, format_args!("    sdiv x{}, x{}, x{}\n", temp, psrc1, psrc2))?;
         // msub x<dst>, x11, x<src2>, x<src1>  ; x<dst> = x<src1> - (x11 * x<src2>)
-        write_line(
-            output,
-            format_args!("    msub x{}, x{}, x{}, x{}\n", pdst, temp, psrc2, psrc1),
-        )?;
+        write_line(output, format_args!("    msub x{}, x{}, x{}, x{}\n", pdst, temp, psrc2, psrc1))?;
 
         if self.is_dead_after(src1, idx, allocator) {
             allocator.free(psrc1);
