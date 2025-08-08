@@ -1,7 +1,5 @@
 use crate::LineNumber;
 use crate::{symboltable::SymbolTable, token::Token};
-use core::panic;
-use std::process::exit;
 use std::{iter::Peekable, str::Chars};
 use crate::errors::{Pl0Error, Pl0Result};
 pub fn scan(
@@ -104,27 +102,16 @@ pub fn scan(
 }
 
 fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<()> {
-    let mut comment = String::new();
-    chars.next(); // consume the opening curly brace
-    let mut found = false;
+    chars.next(); // Consume '{'
     let line = state.line;
-    'comment: for c in chars.by_ref() {
+    for c in chars.by_ref() {
         if c == '\n' {
             state.line += 1;
+        } else if c == '}' {
+            return Ok(());
         }
-        if c == '\0' {
-           return Err(Pl0Error::UnterminatedComment { line });
-        }
-        if c == '}' {
-            found = true;
-            break 'comment;
-        }
-        comment.push(c);
     }
-    if !found {
-        return Err(Pl0Error::UnterminatedComment { line });
-    }
-    Ok(())
+    Err(Pl0Error::UnterminatedComment { line })
 }
 
 pub fn get_string_literal(
@@ -154,12 +141,14 @@ pub fn get_string_literal(
 }
 
 fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
-    'whitespace: for c in chars.by_ref() {
-        if c == '\n' {
-            state.line += 1;
-        }
-        if c != ' ' || c != '\t' || c != '\n' || c != '\r' {
-            break 'whitespace;
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            if c == '\n' {
+                state.line += 1;
+            }
+            chars.next();
+        } else {
+            break;
         }
     }
 }
