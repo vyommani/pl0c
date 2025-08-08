@@ -3,12 +3,12 @@ use crate::{symboltable::SymbolTable, token::Token};
 use core::panic;
 use std::process::exit;
 use std::{iter::Peekable, str::Chars};
-
+use crate::errors::{Pl0Error, Pl0Result};
 pub fn scan(
     state: &mut LineNumber,
     file_content: &str,
     table: &mut SymbolTable,
-) -> Result<Vec<(Token, usize)>, String> {
+) -> Pl0Result<Vec<(Token, usize)>> {
     let mut chars = file_content.chars().peekable();
     let mut lexeme: Vec<(Token, usize)> = vec![];
     let mut lookahead = false;
@@ -75,7 +75,7 @@ pub fn scan(
                         lookahead = true;
                         chars.next(); // look ahead one charcter
                         if chars.peek() != Some(&'=') {
-                            panic!("Unknown token ");
+                            return Err(Pl0Error::UnknownToken {token: ':',line: state.line,});
                         }
                         chars.next(); // consume the '=' character.
                         Token::Assign
@@ -86,7 +86,7 @@ pub fn scan(
                     },
                     '\0' => Token::Null,
                     _ => {
-                        return Err(format!("Unknown token on line {}", state.line));
+                        return Err(Pl0Error::UnknownToken {token: ':',line: state.line,});
                     }
                 };
                 lexeme.push((token, state.line));
@@ -103,7 +103,7 @@ pub fn scan(
     Ok(lexeme)
 }
 
-fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
+fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<()> {
     let mut comment = String::new();
     chars.next(); // consume the opening curly brace
     let mut found = false;
@@ -113,8 +113,7 @@ fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
             state.line += 1;
         }
         if c == '\0' {
-            println!("Unterminited comment at line:{} ", line);
-            exit(1);
+           return Err(Pl0Error::UnterminatedComment { line });
         }
         if c == '}' {
             found = true;
@@ -123,15 +122,15 @@ fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
         comment.push(c);
     }
     if !found {
-        println!("Unterminted comment at line:{}", line);
-        exit(1);
+        return Err(Pl0Error::UnterminatedComment { line });
     }
+    Ok(())
 }
 
 pub fn get_string_literal(
     chars: &mut Peekable<Chars<'_>>,
     state: &mut LineNumber,
-) -> Result<Token, String> {
+) -> Pl0Result<Token> {
     let mut string_literal = String::new();
     chars.next(); // consume the opening '
     loop {
@@ -140,24 +139,15 @@ pub fn get_string_literal(
                 break;
             } else if (*c) == '\n' {
                 state.line += 1;
-                return Err(format!(
-                    "multiline string literal not supported {}",
-                    state.line
-                ));
+                return Err(Pl0Error::MultilineString { line: state.line });
             } else if (*c) == '\0' {
-                return Err(format!(
-                    "unterminited  string literal on line {}",
-                    state.line
-                ));
+                return Err(Pl0Error::UnterminatedString { line: state.line });
             } else {
                 string_literal.push(*c);
                 chars.next();
             }
         } else {
-            return Err(format!(
-                "Unterminated string literal on line {}",
-                state.line
-            ));
+            return Err(Pl0Error::UnterminatedString { line: state.line });
         }
     }
     Ok(Token::StringLiteral(string_literal))
@@ -177,24 +167,24 @@ fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
 pub fn assignment(
     chars: &mut Peekable<Chars<'_>>,
     state: &mut LineNumber,
-) -> Result<Token, String> {
+) -> Pl0Result<Token> {
     chars.next();
     if let Some(c) = chars.peek() {
         if (*c).eq(&'=') {
             chars.next();
             Ok(Token::Assign)
         } else {
-            Err(format!("Unknown token ':' on line {}", state.line))
+            Err(Pl0Error::lexer_error("Expected '=' after ':'", state.line))
         }
     } else {
-        Err(format!("Unterminated assignment on line {}", state.line))
+        Err(Pl0Error::lexer_error("Unexpected end of file after ':'", state.line))
     }
 }
 
 pub fn identifier(
     chars: &mut Peekable<Chars<'_>>,
     state: &mut LineNumber,
-) -> Result<Token, String> {
+) -> Pl0Result<Token> {
     let mut idt = String::new();
     loop {
         if let Some(c) = chars.peek() {
@@ -205,7 +195,7 @@ pub fn identifier(
                 break;
             }
         } else {
-            return Err(format!("Unterminated identifier on line {}", state.line));
+            return Err(Pl0Error::UnterminatedString { line: state.line });
         }
     }
 
@@ -240,23 +230,18 @@ pub fn identifier(
     Ok(token)
 }
 
-pub fn number(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Result<Token, String> {
-    let mut num = String::new();
-    loop {
-        if let Some(c) = chars.peek() {
-            if (*c).is_numeric() || (*c).eq(&'_') {
-                num.push(*c);
-                chars.next();
-            } else {
-                break;
-            }
+pub fn number(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<Token> {
+    let mut number_str = String::new();
+    while let Some(c) = chars.peek() {
+        if c.is_numeric() {
+            number_str.push(*c);
+            chars.next();
         } else {
-            return Err(format!("unterminated number on line {}", state.line));
+            break;
         }
     }
-    if let Ok(val) = num.parse::<i64>() {
-        Ok(Token::Number(val))
-    } else {
-        Err(format!("Invalid number at line {}", state.line))
+    match number_str.parse::<i64>() {
+        Ok(num) => Ok(Token::Number(num)),
+        Err(_) => Err(Pl0Error::InvalidNumber {number: number_str, line: state.line,}),
     }
 }
