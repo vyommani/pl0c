@@ -22,6 +22,7 @@ pub mod register_allocator_common;
 pub mod register_allocator_x86_64;
 pub mod register_pool;
 pub mod runtime_arm64;
+pub mod runtime_x86_64;
 pub mod spill_manager;
 pub mod statement;
 pub mod symboltable;
