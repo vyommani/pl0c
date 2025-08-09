@@ -30,13 +30,7 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn new(
-        symbol_type: SymbolType,
-        line_number: usize,
-        location: SymbolLocation,
-        is_global: bool,
-        level: usize,
-    ) -> Self {
+    pub fn new(symbol_type: SymbolType, line_number: usize, location: SymbolLocation, is_global: bool, level: usize) -> Self {
         Self {
             symbol_type,
             line_number,

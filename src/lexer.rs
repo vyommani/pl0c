@@ -187,36 +187,22 @@ pub fn identifier(
             return Err(Pl0Error::UnterminatedString { line: state.line });
         }
     }
+    static KEYWORDS: &[(&str, Token)] = &[("const", Token::Const), ("var", Token::Var), ("procedure", Token::Procedure), ("call", Token::Call),
+        ("begin", Token::Begin), ("end", Token::End), ("if", Token::If), ("then", Token::Then), ("else", Token::Else),
+        ("while", Token::While), ("do", Token::Do), ("odd", Token::Odd), ("writeint", Token::WriteInt),
+        ("writeInt", Token::WriteInt), ("writechar", Token::WriteChar), ("writeChar", Token::WriteChar), ("writestr", Token::WriteStr),
+        ("writeStr", Token::WriteStr), ("readint", Token::ReadInt), ("readInt", Token::ReadInt), ("readchar", Token::ReadChar),
+        ("readChar", Token::ReadChar), ("into", Token::Into), ("size", Token::Size), ("exit", Token::Exit),
+        ("and", Token::And), ("or", Token::Or), ("not", Token::Not), ("mod", Token::Modulo), ("forward", Token::Forward),
+    ];
 
-    let token = match idt.as_str() {
-        "const" => Token::Const,
-        "var" => Token::Var,
-        "procedure" => Token::Procedure,
-        "call" => Token::Call,
-        "begin" => Token::Begin,
-        "end" => Token::End,
-        "if" => Token::If,
-        "then" => Token::Then,
-        "else" => Token::Else,
-        "while" => Token::While,
-        "do" => Token::Do,
-        "odd" => Token::Odd,
-        "writeint" | "writeInt" => Token::WriteInt,
-        "writechar" | "writeChar" => Token::WriteChar,
-        "writestr" | "writeStr" => Token::WriteStr,
-        "readint" | "readInt" => Token::ReadInt,
-        "readchar" | "readChar" => Token::ReadChar,
-        "into" => Token::Into,
-        "size" => Token::Size,
-        "exit" => Token::Exit,
-        "and" => Token::And,
-        "or" => Token::Or,
-        "not" => Token::Not,
-        "mod" => Token::Modulo,
-        "forward" => Token::Forward,
-        _ => Token::Ident(idt),
-    };
-    Ok(token)
+    let binding = Token::Ident(idt.clone());
+    let token = KEYWORDS
+        .iter()
+        .find(|&&(k, _)| k == idt)
+        .map(|(_, t)| t)
+        .unwrap_or(&binding);
+    Ok(token.clone())
 }
 
 pub fn number(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<Token> {
