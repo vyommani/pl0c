@@ -16,38 +16,8 @@ use crate::errors::Pl0Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
-    X0 = 0,
-    X1,
-    X2,
-    X3,
-    X4,
-    X5,
-    X6,
-    X7,
-    X8,
-    X9,
-    X10,
-    X11,
-    X12,
-    X13,
-    X14,
-    X15,
-    X16,
-    X17,
-    X18,
-    X19,
-    X20,
-    X21,
-    X22,
-    X23,
-    X24,
-    X25,
-    X26,
-    X27,
-    X28,
-    X29,
-    X30,
-    SP,
+    X0 = 0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15,
+    X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, SP,
 }
 
 impl fmt::Display for RegisterName {
@@ -62,39 +32,11 @@ impl fmt::Display for RegisterName {
     }
 }
 
-const ALL_REGS: [RegisterName; 32] = [
-    RegisterName::X0,
-    RegisterName::X1,
-    RegisterName::X2,
-    RegisterName::X3,
-    RegisterName::X4,
-    RegisterName::X5,
-    RegisterName::X6,
-    RegisterName::X7,
-    RegisterName::X8,
-    RegisterName::X9,
-    RegisterName::X10,
-    RegisterName::X11,
-    RegisterName::X12,
-    RegisterName::X13,
-    RegisterName::X14,
-    RegisterName::X15,
-    RegisterName::X16,
-    RegisterName::X17,
-    RegisterName::X18,
-    RegisterName::X19,
-    RegisterName::X20,
-    RegisterName::X21,
-    RegisterName::X22,
-    RegisterName::X23,
-    RegisterName::X24,
-    RegisterName::X25,
-    RegisterName::X26,
-    RegisterName::X27,
-    RegisterName::X28,
-    RegisterName::X29,
-    RegisterName::X30,
-    RegisterName::SP,
+const ALL_REGS: [RegisterName; 32] = [ RegisterName::X0, RegisterName::X1, RegisterName::X2, RegisterName::X3, RegisterName::X4,
+    RegisterName::X5, RegisterName::X6, RegisterName::X7, RegisterName::X8, RegisterName::X9, RegisterName::X10,RegisterName::X11,
+    RegisterName::X12, RegisterName::X13, RegisterName::X14, RegisterName::X15, RegisterName::X16, RegisterName::X17, RegisterName::X18,
+    RegisterName::X19, RegisterName::X20, RegisterName::X21, RegisterName::X22, RegisterName::X23, RegisterName::X24,RegisterName::X25,
+    RegisterName::X26, RegisterName::X27, RegisterName::X28, RegisterName::X29, RegisterName::X30, RegisterName::SP,
 ];
 
 impl RegisterName {
@@ -243,113 +185,73 @@ impl Arm64RegisterAllocator {
         }
     }
 
-    pub fn alloc(
-        &mut self,
-        v_reg: &Register<RegisterName>,
-        vreg_name: &str,
-        emitter: &mut dyn CodeEmitter,
-    ) -> Pl0Result<Register<RegisterName>> {
+    pub fn alloc(&mut self, v_reg: &Register<RegisterName>, vreg_name: &str, emitter: &mut dyn CodeEmitter) -> Pl0Result<Register<RegisterName>> {
         // Update next_uses based on current instruction
-        let mut next_uses = v_reg.next_uses.clone();
-        next_uses.retain(|&use1| use1 >= self.current_instruction);
+        let next_uses: Vec<i32> = v_reg.next_uses.iter()
+        .copied()
+        .filter(|&use_pos| use_pos >= self.current_instruction)
+        .collect();
 
-        // Coalescing
-        let coalesce_candidates: Vec<(usize, usize)> = self
-            .reg_map
-            .iter()
-            .enumerate()
-            .filter_map(|(i, r)| {
-                r.as_ref()
-                    .filter(|reg| {
-                        reg.v_reg != usize::MAX
-                            && reg.spill_offset.is_none()
-                            && self.can_coalesce(v_reg.v_reg, reg.v_reg)
-                    })
-                    .map(|reg| (i, reg.v_reg))
-            })
-            .collect();
-
-        for (p_reg, _) in coalesce_candidates {
-            if let Some(reg) = self.reg_map[p_reg].as_mut() {
-                reg.v_reg = v_reg.v_reg;
-                reg.next_uses = next_uses.clone();
-                reg.address = v_reg.address;
-                reg.spill_offset = None;
-                self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
-                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
-                }
-                return Ok(reg.clone());
-            }
-        }
-
-        // Try caller-saved registers first (simpler approach)
+        // Try caller-saved registers first
         if let Some(p_reg) = self.pool.allocate_caller_saved() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
-                reg.next_uses = next_uses.clone();
+                reg.next_uses = next_uses;
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
-                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
-                }
                 return Ok(reg.clone());
             }
         }
 
-        // Callee-saved fallback (if not live_across_call but caller-saved exhausted)
+        // Callee-saved fallback
         if let Some(p_reg) = self.pool.allocate_callee_saved() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
-                reg.next_uses = next_uses.clone();
+                reg.next_uses = next_uses;
                 reg.address = v_reg.address;
                 reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-                if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
-                    self.live_range_manager.set_range(v_reg.v_reg, start, end);
-                }
                 if p_reg >= 19 && p_reg <= 28 {
-                    self.used_callee_saved.insert(p_reg); // Track usage
+                    self.used_callee_saved.insert(p_reg);
                 }
                 return Ok(reg.clone());
             }
         }
 
-        // Spill
-        let mut spill_candidates = BinaryHeap::new();
-        for (i, r) in self.reg_map.iter().enumerate() {
-            if let Some(reg) = r.as_ref() {
-                if reg.name.get_constraints().can_spill && reg.v_reg != usize::MAX {
-                    let next_use = reg.next_uses.first().cloned().unwrap_or(i32::MAX);
-                    spill_candidates.push(Reverse((next_use, i)));
-                }
-            }
+        // Spill: Select register with furthest next use
+        let (spill_idx, spilled) = self.reg_map.iter().enumerate()
+            .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg)))
+            .filter(|(_, reg)| reg.name.get_constraints().can_spill && reg.v_reg != usize::MAX)
+            .max_by_key(|(_, reg)| reg.next_uses.first().copied().unwrap_or(i32::MAX))
+            .ok_or(Pl0Error::NoRegistersAvailable)?;
+
+        // Find vreg name for spilled register
+        let spilled_vreg = self.vreg_map.iter().find_map(|(name, reg)| (reg.v_reg == spilled.v_reg).then(|| name.clone()))
+            .ok_or_else(|| Pl0Error::RegisterAllocationError {message: format!("Spilled register {} has no vreg mapping", spill_idx)})?;
+
+        // Emit spill code
+        let spill_offset = self.spill_manager.allocate_slot();
+        let spill_reg_name = RegisterName::from_index(spill_idx)
+            .ok_or_else(|| Pl0Error::RegisterAllocationError {message: format!("Invalid register index: {}", spill_idx)})?;
+        emitter.emit(&format!("str {}, [sp, -{}]", spill_reg_name, spill_offset))?;
+
+        // Update vreg_map for spilled register
+        if let Some(spilled_reg) = self.reg_map[spill_idx].as_mut() {
+            spilled_reg.spill_offset = Some(spill_offset);
+            self.vreg_map.insert(spilled_vreg.clone(), spilled_reg.clone());
         }
 
-        let spill_idx = spill_candidates
-            .pop()
-            .map(|Reverse((_, i))| i)
-            .ok_or(Pl0Error::codegen_error("No registers available"))?;
-
-        let reg_name = self.reg_map[spill_idx]
-            .as_ref()
-            .map(|reg| reg.name.clone())
-            .ok_or(Pl0Error::codegen_error("No registers available"))?;
-        let spill_offset = self.spill_manager.allocate_slot();
-        emitter.emit(&format!("str {}, [sp, -{}]", reg_name, spill_offset))?;
-
+        // Update reg_map for new allocation
         if let Some(reg) = self.reg_map[spill_idx].as_mut() {
-            let old_v_reg = reg.v_reg;
             reg.v_reg = v_reg.v_reg;
             reg.next_uses = next_uses;
             reg.address = v_reg.address;
             reg.spill_offset = Some(spill_offset);
             self.vreg_map.insert(vreg_name.to_string(), reg.clone());
-            if let Some(&(start, end)) = self.live_range_manager.ranges.get(&v_reg.v_reg) {
-                self.live_range_manager.set_range(v_reg.v_reg, start, end);
+            if (19..=28).contains(&spill_idx) {
+                self.used_callee_saved.insert(spill_idx);
             }
-            self.live_range_manager.remove_range(old_v_reg);
             Ok(reg.clone())
         } else {
             Err(Pl0Error::NoRegistersAvailable)
