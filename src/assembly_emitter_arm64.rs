@@ -2,7 +2,7 @@ use crate::ir_dispatch::IROp;
 use crate::runtime_arm64::Arm64Runtime;
 use crate::{
     assembly_generator::{AssemblyEmitter, RegisterAllocator},
-    register_allocator_arm64::RegisterName,
+    register_allocator_arm64::{RegisterName, Arm64RegisterAllocator},
     register_allocator_common::Register,
     utils::string_utils::write_line,
 };
@@ -43,43 +43,22 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
     fn compute_vreg_next_uses(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Pl0Result<()> {
         let mut vreg_uses: HashMap<String, Vec<usize>> = HashMap::new();
         let vreg_regex = Regex::new(r"v[0-9]+\b").unwrap();
-        let mut call_indices = Vec::new();
         for (idx, line) in ir.iter().enumerate() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            // Record function call instructions
-            let is_call = line.starts_with("write_int")
-                || line.starts_with("read_int")
-                || line.starts_with("call ");
-            if is_call {
-                call_indices.push(idx as i32);
-            }
+            // Collect virtual register uses
             for cap in vreg_regex.captures_iter(line) {
                 let vreg = cap.get(0).unwrap().as_str();
                 vreg_uses.entry(vreg.to_string()).or_default().push(idx);
             }
         }
         for (i, (vreg, uses)) in vreg_uses.into_iter().enumerate() {
-            let live_range =
-                if let (Some(&first), Some(&last)) = (uses.iter().min(), uses.iter().max()) {
-                    (first as i32, last as i32)
-                } else {
-                    (0, 0)
-                };
-            // Check if vreg is live across a call
-            let live_across_call = call_indices
-                .iter()
-                .any(|&call_idx| call_idx >= live_range.0 && call_idx <= live_range.1);
-            let mut reg = Register::new(usize::MAX, i, RegisterName::SP, uses.iter().map(|u| *u as i32).collect(), 0);
-            reg.live_across_call = live_across_call;
-            if let Some(alloc) = allocator
-                .as_any_mut()
-                .downcast_mut::<crate::register_allocator_arm64::Arm64RegisterAllocator>(
-            ) {
+            let reg = Register::new(usize::MAX, i, RegisterName::SP, uses.iter().map(|u| *u as i32).collect(), 0);
+            if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>()
+            {
                 alloc.vreg_map.insert(vreg, reg);
-                alloc.set_live_range(i, live_range.0, live_range.1);
             }
         }
         Ok(())
