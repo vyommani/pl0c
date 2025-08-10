@@ -4,7 +4,7 @@ use crate::{
     code_emitter::{CodeEmitter, StringCodeEmitter},
     decl::{ConstDecl, ProcDecl, VarDecl},
     expression::{BinOp, OddCondition, RelationalCondition},
-    io::{ReadChar, ReadInt, WriteChar, WriteInt, WriteStr},
+    io::{ReadInt, WriteInt, WriteStr},
     program::Program,
     statement::{AssignStmt, BeginStmt, CallStmt, IfStmt, WhileStatement},
     symboltable::{Symbol, SymbolLocation, SymbolTable, SymbolType},
@@ -535,16 +535,6 @@ impl ASTVisitor for IRGenerator {
         }
     }
 
-    fn visit_write_char(&mut self, stmt: &WriteChar) -> Pl0Result<()> {
-        self.emit_write_operation(stmt.expr.as_ref().map(|e| e.as_ref()), "WriteChar statement missing expression",
-            |generator, vreg| {
-                let mut emitter = StringCodeEmitter::new(&mut generator.text_output);
-                emitter.emit_write_char(vreg).unwrap();
-            },
-        )?;
-        Ok(())
-    }
-
     fn visit_write_str(&mut self, stmt: &WriteStr) -> Pl0Result<()> {
         if stmt.expr.is_empty() {
             return Err(Pl0Error::codegen_error("WriteStr statement missing expression"));
@@ -556,10 +546,6 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_read_int(&mut self, expr: &ReadInt) -> Pl0Result<()> {
         self.emit_read_operation("read_int", &expr.identifier)
-    }
-
-    fn visit_read_char(&mut self, expr: &ReadChar) -> Pl0Result<()> {
-        self.emit_read_operation("read_char", &expr.identifier)
     }
 
     fn visit_exit(&mut self, _expr: &Exit) -> Pl0Result<()> {

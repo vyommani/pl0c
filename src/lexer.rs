@@ -188,12 +188,10 @@ pub fn identifier(
         }
     }
     static KEYWORDS: &[(&str, Token)] = &[("const", Token::Const), ("var", Token::Var), ("procedure", Token::Procedure), ("call", Token::Call),
-        ("begin", Token::Begin), ("end", Token::End), ("if", Token::If), ("then", Token::Then), ("else", Token::Else),
-        ("while", Token::While), ("do", Token::Do), ("odd", Token::Odd), ("writeint", Token::WriteInt),
-        ("writeInt", Token::WriteInt), ("writechar", Token::WriteChar), ("writeChar", Token::WriteChar), ("writestr", Token::WriteStr),
-        ("writeStr", Token::WriteStr), ("readint", Token::ReadInt), ("readInt", Token::ReadInt), ("readchar", Token::ReadChar),
-        ("readChar", Token::ReadChar), ("into", Token::Into), ("size", Token::Size), ("exit", Token::Exit),
-        ("and", Token::And), ("or", Token::Or), ("not", Token::Not), ("mod", Token::Modulo), ("forward", Token::Forward),
+        ("begin", Token::Begin), ("end", Token::End), ("if", Token::If), ("then", Token::Then), ("else", Token::Else), ("while", Token::While), 
+        ("do", Token::Do), ("odd", Token::Odd), ("writeint", Token::WriteInt), ("writeInt", Token::WriteInt), ("writestr", Token::WriteStr),
+        ("writeStr", Token::WriteStr), ("readint", Token::ReadInt), ("readInt", Token::ReadInt), ("into", Token::Into), ("size", Token::Size),
+        ("exit", Token::Exit), ("and", Token::And), ("or", Token::Or), ("not", Token::Not), ("mod", Token::Modulo), ("forward", Token::Forward),
     ];
 
     let binding = Token::Ident(idt.clone());

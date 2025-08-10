@@ -7,9 +7,7 @@ use crate::decl::VarDecl;
 use crate::expression::BinOp;
 use crate::expression::OddCondition;
 use crate::expression::RelationalCondition;
-use crate::io::ReadChar;
 use crate::io::ReadInt;
-use crate::io::WriteChar;
 use crate::io::WriteInt;
 use crate::io::WriteStr;
 use crate::program::Program;
@@ -237,9 +235,7 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_identi
  *		      | "if" condition "then" statement [ "else" statement ]
  *		      | "while" condition "do" statement
  *		      | "readInt" ident
- *		      | "readChar" ident
  *		      | "writeInt" expression
- *	    	  | "writeChar" expression
  *  		  | "writeStr" ( ident | string )
  *	    	  | "exit" expression ]  .
  */
@@ -304,17 +300,6 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                 }
                 return Some(Box::new(WriteInt::new(expr)));
             }
-            Token::WriteChar => {
-                expect(Token::WriteChar, iter);
-                if TOKEN == Token::LParen {
-                    expect(Token::LParen, iter);
-                }
-                let expr = expression(iter, table, mapped_identifiers);
-                if TOKEN == Token::RParen {
-                    expect(Token::RParen, iter);
-                }
-                return Some(Box::new(WriteChar::new(expr)));
-            }
             Token::WriteStr => {
                 expect(Token::WriteStr, iter);
                 expect(Token::LParen, iter);
@@ -352,20 +337,6 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                     expect(Token::RParen, iter);
                 }
                 return Some(Box::new(ReadInt::new(ident)));
-            }
-            Token::ReadChar => {
-                expect(Token::ReadChar, iter);
-                if TOKEN == Token::LParen {
-                    expect(Token::LParen, iter);
-                }
-                let mut ident = get_identifier(TOKEN.clone());
-                ident = get_renamed_identifier(&ident, mapped_identifiers);
-                table.type_check(&ident, SymbolType::Identifier, LINE_NUMBER.clone());
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                if TOKEN == Token::RParen {
-                    expect(Token::RParen, iter);
-                }
-                return Some(Box::new(ReadChar::new(ident)));
             }
             Token::Exit => {
                 expect(Token::Exit, iter);

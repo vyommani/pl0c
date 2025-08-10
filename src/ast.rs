@@ -11,9 +11,7 @@
 *		     | "if" condition "then" statement [ "else" statement ]
 *		     | "while" condition "do" statement
 *		     | "readInt" ( ident )
-*		     | "readChar" ( ident )
 *		     | "writeInt" expression
-*		     | "writeChar" expression
 *		     | "writeStr" ( ident | string )
 *		     | "exit" expression ] ;
 * condition	 = "odd" expression | expression ( comparator ) expression ;
