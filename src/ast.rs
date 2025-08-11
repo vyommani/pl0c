@@ -3,17 +3,17 @@
 *
 * program    = block "." ;
 * block	     = [ "const" ident "=" number { "," ident "=" number } ";" ]
-*		     [ "var" ident { "," ident} ";" ]
-*		     { "procedure" ident ";" block ";" } statement ;
+*		       [ "var" ident { "," ident} ";" ]
+*		       { "procedure" ident ";" block ";" } statement ;
 * statement	 = [ ident ":=" expression
-*		     | "call" ident
-*		     | "begin" statement { ";" statement } "end"
-*		     | "if" condition "then" statement [ "else" statement ]
-*		     | "while" condition "do" statement
-*		     | "readInt" ( ident )
-*		     | "writeInt" expression
-*		     | "writeStr" ( ident | string )
-*		     | "exit" expression ] ;
+*		       | "call" ident
+*		       | "begin" statement { ";" statement } "end"
+*		       | "if" condition "then" statement [ "else" statement ]
+*		       | "while" condition "do" statement
+*		       | "read" ident
+*		       | "write" expression
+*		       | "writeStr" ( ident | string )
+*		       | "exit" expression ] ;
 * condition	 = "odd" expression | expression ( comparator ) expression ;
 * expression = [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term } ;
 * term		 = factor { ( "*" | "/" | "mod" | "and" ) factor } ;

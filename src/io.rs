@@ -2,22 +2,22 @@ use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
 
-pub struct WriteInt {
+pub struct Write {
     pub expr: Option<Box<dyn ExpressionNode>>,
 }
 
-impl WriteInt {
+impl Write {
     pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
         Self { expr }
     }
 }
 
-impl Node for WriteInt {
+impl Node for Write {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_write_int(self)
     }
     fn print(&self) {
-        print!("writeInt(");
+        print!("write(");
         if let Some(expr) = &self.expr {
             expr.print();
         }
@@ -50,22 +50,22 @@ impl Node for WriteStr {
     }
 }
 
-pub struct ReadInt {
+pub struct Read {
     pub identifier: String,
 }
 
-impl ReadInt {
+impl Read {
     pub fn new(identifier: String) -> Self {
         Self { identifier }
     }
 }
 
-impl Node for ReadInt {
+impl Node for Read {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
         visitor.visit_read_int(self)
     }
     fn print(&self) {
-        print!("readInt({})", self.identifier);
+        print!("read({})", self.identifier);
     }
     fn as_any(&self) -> &dyn std::any::Any {
         self

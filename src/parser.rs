@@ -7,8 +7,8 @@ use crate::decl::VarDecl;
 use crate::expression::BinOp;
 use crate::expression::OddCondition;
 use crate::expression::RelationalCondition;
-use crate::io::ReadInt;
-use crate::io::WriteInt;
+use crate::io::Read;
+use crate::io::Write;
 use crate::io::WriteStr;
 use crate::program::Program;
 use crate::statement::AssignStmt;
@@ -234,8 +234,8 @@ fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_identi
  *	    	  | "begin" statement { ";" statement } "end"
  *		      | "if" condition "then" statement [ "else" statement ]
  *		      | "while" condition "do" statement
- *		      | "readInt" ident
- *		      | "writeInt" expression
+ *		      | "read" ident
+ *		      | "write" expression
  *  		  | "writeStr" ( ident | string )
  *	    	  | "exit" expression ]  .
  */
@@ -289,8 +289,8 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                 let body = statement(iter, table, mapped_identifiers);
                 return Some(Box::new(WhileStatement::new(cond, body)));
             }
-            Token::WriteInt => {
-                expect(Token::WriteInt, iter);
+            Token::Write => {
+                expect(Token::Write, iter);
                 if TOKEN == Token::LParen {
                     expect(Token::LParen, iter);
                 }
@@ -298,7 +298,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
                 }
-                return Some(Box::new(WriteInt::new(expr)));
+                return Some(Box::new(Write::new(expr)));
             }
             Token::WriteStr => {
                 expect(Token::WriteStr, iter);
@@ -324,8 +324,8 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                     }
                 }
             }
-            Token::ReadInt => {
-                expect(Token::ReadInt, iter);
+            Token::Read => {
+                expect(Token::Read, iter);
                 if TOKEN == Token::LParen {
                     expect(Token::LParen, iter);
                 }
@@ -336,7 +336,7 @@ fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_id
                 if TOKEN == Token::RParen {
                     expect(Token::RParen, iter);
                 }
-                return Some(Box::new(ReadInt::new(ident)));
+                return Some(Box::new(Read::new(ident)));
             }
             Token::Exit => {
                 expect(Token::Exit, iter);

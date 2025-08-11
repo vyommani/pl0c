@@ -4,7 +4,7 @@ use crate::{
     code_emitter::{CodeEmitter, StringCodeEmitter},
     decl::{ConstDecl, ProcDecl, VarDecl},
     expression::{BinOp, OddCondition, RelationalCondition},
-    io::{ReadInt, WriteInt, WriteStr},
+    io::{Read, Write, WriteStr},
     program::Program,
     statement::{AssignStmt, BeginStmt, CallStmt, IfStmt, WhileStatement},
     symboltable::{Symbol, SymbolLocation, SymbolTable, SymbolType},
@@ -524,14 +524,14 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_write_int(&mut self, stmt: &WriteInt) -> Pl0Result<()> {
+    fn visit_write_int(&mut self, stmt: &Write) -> Pl0Result<()> {
         if let Some(expr) = stmt.expr.as_ref() {
             let vreg = self.emit_expression(expr.as_ref())?;
             let mut emitter = StringCodeEmitter::new(&mut self.text_output);
             emitter.emit_write_int(&vreg)?;
             Ok(())
         } else {
-            Err(Pl0Error::codegen_error("WriteInt statement missing expression"))
+            Err(Pl0Error::codegen_error("Write statement missing expression"))
         }
     }
 
@@ -544,7 +544,7 @@ impl ASTVisitor for IRGenerator {
         Ok(())
     }
 
-    fn visit_read_int(&mut self, expr: &ReadInt) -> Pl0Result<()> {
+    fn visit_read_int(&mut self, expr: &Read) -> Pl0Result<()> {
         self.emit_read_operation("read_int", &expr.identifier)
     }
 
