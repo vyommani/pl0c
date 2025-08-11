@@ -127,57 +127,75 @@ impl X86_64Runtime {
         output.push_str("read_int:\n");
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
-        output.push_str("    sub rsp, 64\n");
-        output.push_str("    mov rsi, rsp\n");
-        output.push_str("    mov rdi, 0\n");
-        output.push_str("    mov rdx, 64\n");
-        output.push_str("    mov rax, 0\n");
-        output.push_str("    syscall\n");
-        output.push_str("    mov rcx, rsp\n");
-        output.push_str("    mov rbx, 0\n");
-        output.push_str("    mov rdx, 0\n");
-        output.push_str("    mov r8, 0\n");
+        output.push_str("    push rbx\n");
+        output.push_str("    push r12\n");
+        output.push_str("    sub rsp, 8\n"); // For alignment and char buffer
+        output.push_str("    xor rbx, rbx\n"); // Accumulator
+        output.push_str("    xor r12, r12\n"); // Negative flag
         output.push_str(".read_int_skip_ws:\n");
-        output.push_str("    mov al, [rcx + r8]\n");
-        output.push_str("    cmp al, ' '\n");
-        output.push_str("    je .read_int_inc_idx\n");
-        output.push_str("    cmp al, '\t'\n");
-        output.push_str("    je .read_int_inc_idx\n");
-        output.push_str("    jmp .read_int_check_sign\n");
-        output.push_str(".read_int_inc_idx:\n");
-        output.push_str("    inc r8\n");
-        output.push_str("    jmp .read_int_skip_ws\n");
-        output.push_str(".read_int_check_sign:\n");
-        output.push_str("    mov al, [rcx + r8]\n");
-        output.push_str("    cmp al, '-'\n");
-        output.push_str("    jne .read_int_check_plus\n");
-        output.push_str("    mov rdx, 1\n");
-        output.push_str("    inc r8\n");
+        output.push_str("    call .read_char\n");
+        output.push_str("    cmp rax, 1\n");
+        output.push_str("    jne .read_int_error\n");
+        output.push_str("    mov al, [rbp - 8]\n");
+        output.push_str("    cmp al, 32\n"); // Space (ASCII 32)
+        output.push_str("    je .read_int_skip_ws\n");
+        output.push_str("    cmp al, 9\n"); // Tab (ASCII 9)
+        output.push_str("    je .read_int_skip_ws\n");
+        output.push_str("    cmp al, 10\n"); // Newline (ASCII 10)
+        output.push_str("    je .read_int_skip_ws\n");
+        output.push_str("    cmp al, 13\n"); // Carriage return (ASCII 13)
+        output.push_str("    je .read_int_skip_ws\n");
+        output.push_str("    cmp al, 45\n"); // Minus '-' (ASCII 45)
+        output.push_str("    jne .read_int_check_digit\n");
+        output.push_str("    mov r12, 1\n");
+        output.push_str("    call .read_char\n");
+        output.push_str("    cmp rax, 1\n");
+        output.push_str("    jne .read_int_error\n");
+        output.push_str("    mov al, [rbp - 8]\n");
         output.push_str("    jmp .read_int_parse\n");
-        output.push_str(".read_int_check_plus:\n");
-        output.push_str("    cmp al, '+'\n");
-        output.push_str("    jne .read_int_parse\n");
-        output.push_str("    inc r8\n");
+        output.push_str(".read_int_check_digit:\n");
+        output.push_str("    cmp al, 48\n"); // '0' (ASCII 48)
+        output.push_str("    jb .read_int_error\n");
+        output.push_str("    cmp al, 57\n"); // '9' (ASCII 57)
+        output.push_str("    ja .read_int_error\n");
         output.push_str(".read_int_parse:\n");
-        output.push_str("    mov al, [rcx + r8]\n");
-        output.push_str("    cmp al, '0'\n");
+        output.push_str("    cmp al, 48\n"); // '0'
         output.push_str("    jb .read_int_done\n");
-        output.push_str("    cmp al, '9'\n");
+        output.push_str("    cmp al, 57\n"); // '9'
         output.push_str("    ja .read_int_done\n");
+        output.push_str("    sub al, 48\n"); // Subtract '0'
+        output.push_str("    movzx rcx, al\n");
         output.push_str("    imul rbx, rbx, 10\n");
-        output.push_str("    sub al, '0'\n");
-        output.push_str("    movzx rax, al\n");
-        output.push_str("    add rbx, rax\n");
-        output.push_str("    inc r8\n");
+        output.push_str("    add rbx, rcx\n");
+        output.push_str("    call .read_char\n");
+        output.push_str("    cmp rax, 1\n");
+        output.push_str("    jne .read_int_done\n");
+        output.push_str("    mov al, [rbp - 8]\n");
         output.push_str("    jmp .read_int_parse\n");
         output.push_str(".read_int_done:\n");
-        output.push_str("    cmp rdx, 0\n");
+        output.push_str("    cmp r12, 0\n");
         output.push_str("    je .read_int_store\n");
         output.push_str("    neg rbx\n");
         output.push_str(".read_int_store:\n");
         output.push_str("    mov rax, rbx\n");
-        output.push_str("    add rsp, 64\n");
+        output.push_str("    add rsp, 8\n");
+        output.push_str("    pop r12\n");
+        output.push_str("    pop rbx\n");
         output.push_str("    pop rbp\n");
+        output.push_str("    ret\n");
+        output.push_str(".read_int_error:\n");
+        output.push_str("    mov rax, 0\n");
+        output.push_str("    add rsp, 8\n");
+        output.push_str("    pop r12\n");
+        output.push_str("    pop rbx\n");
+        output.push_str("    pop rbp\n");
+        output.push_str("    ret\n");
+        output.push_str(".read_char:\n");
+        output.push_str("    mov rax, 0\n");
+        output.push_str("    mov rdi, 0\n");
+        output.push_str("    lea rsi, [rbp - 8]\n");
+        output.push_str("    mov rdx, 1\n");
+        output.push_str("    syscall\n");
         output.push_str("    ret\n");
         Ok(())
     }
