@@ -27,15 +27,13 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         Self::emit_data_section(&mut data_output, &variables, &constants)?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
-        let main_stack_size =
-            self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output)?;
+        let main_stack_size = self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output)?;
         // Prepend .global main and prologue to main_output
         let new_main_output = Self::emit_main_section(&main_output, allocator, main_stack_size)?;
         // Assemble final output
         let mut footer = String::new();
         self.emit_footer(&mut footer, needs_write_int, needs_read_int)?;
-        let final_output =
-            Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
+        let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
         output.push_str(&final_output);
         Ok(())
     }
@@ -206,10 +204,7 @@ impl Arm64AssemblyEmitter {
 
     // Helper to check if a line should be skipped
     fn should_skip_line(line: &str) -> bool {
-        line.is_empty()
-            || line.starts_with('#')
-            || line.starts_with("var ")
-            || line.starts_with("const ")
+        line.is_empty() || line.starts_with('#') || line.starts_with("var ") || line.starts_with("const ")
     }
 
     // Helper to check if a label is followed by proc_enter
@@ -249,10 +244,7 @@ impl Arm64AssemblyEmitter {
         let mut i = 0;
         while i < ir.len() {
             // Set instruction index for register allocator
-            if let Some(alloc) = allocator
-                .as_any_mut()
-                .downcast_mut::<crate::register_allocator_arm64::Arm64RegisterAllocator>(
-            ) {
+            if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>() {
                 alloc.set_instruction_index(i as i32);
             }
 
@@ -287,10 +279,7 @@ impl Arm64AssemblyEmitter {
 
             // Handle main proc_enter specially
             if !in_proc && op == IROp::ProcEnter {
-                main_stack_size = rest
-                    .get(0)
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(0);
+                main_stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
                 i += 1;
                 continue;
             }
@@ -348,10 +337,7 @@ impl Arm64AssemblyEmitter {
         // Store static link (from x19) at [x29, #-8]
         write_line(output, format_args!("    str x19, [x29, #-8]\n"))?;
         // Save used callee-saved registers
-        if let Some(alloc) = allocator
-            .as_any_mut()
-            .downcast_mut::<crate::register_allocator_arm64::Arm64RegisterAllocator>(
-        ) {
+        if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>() {
             let mut regs: Vec<_> = alloc.get_used_callee_saved().iter().copied().collect();
             regs.sort();
             for reg in regs {
@@ -369,10 +355,7 @@ impl Arm64AssemblyEmitter {
 
     fn emit_epilogue(output: &mut String, allocator: &mut dyn RegisterAllocator) -> Pl0Result<()> {
         // Restore used callee-saved registers in reverse order
-        if let Some(alloc) = allocator
-            .as_any_mut()
-            .downcast_mut::<crate::register_allocator_arm64::Arm64RegisterAllocator>(
-        ) {
+        if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>() {
             let spill_space = alloc.get_spill_space_needed();
             if spill_space > 0 {
                 let aligned_spill_space = ((spill_space + 15) / 16) * 16;
@@ -442,8 +425,7 @@ impl Arm64AssemblyEmitter {
     fn emit_li(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let pdst = allocator
-            .alloc(dst, output)?;
+        let pdst = allocator.alloc(dst, output)?;
         if let Ok(imm_val) = imm.parse::<usize>() {
             self.emit_load_immediate(pdst, imm_val, output)?;
         } else {
@@ -459,8 +441,7 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src = rest.get(1).unwrap_or(&"");
         let src = src.trim().replace(['[', ']', ','], "");
-        let pdst = allocator
-            .alloc(dst, output)?;
+        let pdst = allocator.alloc(dst, output)?;
         self.validate_register(pdst, "x12 cannot be used for vreg allocation")?;
         self.emit_load_store_address(output, pdst, &src, true)?;
         if self.is_dead_after(dst, idx, allocator) {
@@ -473,8 +454,7 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"");
         let dst = dst.trim().replace(['[', ']', ','], "");
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
-        let psrc = allocator
-            .ensure(src, output)?;
+        let psrc = allocator.ensure(src, output)?;
         self.validate_register(psrc, "x12 cannot be used for vreg allocation")?;
         self.emit_load_store_address(output, psrc, &dst, false)?;
         if self.is_dead_after(src, idx, allocator) {
