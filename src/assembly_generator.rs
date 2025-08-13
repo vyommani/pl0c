@@ -20,17 +20,8 @@ pub trait RegisterAllocator {
 }
 
 pub trait AssemblyEmitter {
-    fn emit(
-        &self,
-        ir: &[String],
-        allocator: &mut dyn RegisterAllocator,
-        output: &mut String,
-    ) -> Pl0Result<()>;
-    fn compute_vreg_next_uses(
-        &self,
-        ir: &[String],
-        allocator: &mut dyn RegisterAllocator,
-    ) -> Pl0Result<()>;
+    fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()>;
+    fn compute_vreg_next_uses(&self, ir: &[String], allocator: &mut dyn RegisterAllocator) -> Pl0Result<()>;
 }
 
 #[derive()]
@@ -76,19 +67,8 @@ impl AssemblyGenerator {
     }
 
     pub fn emit_assembly(&mut self, ir: &str) -> Pl0Result<()> {
-        self.emitter.compute_vreg_next_uses(
-            &ir.lines()
-                .map(|line| line.to_string())
-                .collect::<Vec<String>>(),
-            &mut *self.allocator,
-        )?;
-        self.emitter.emit(
-            &ir.lines()
-                .map(|line| line.to_string())
-                .collect::<Vec<String>>(),
-            &mut *self.allocator,
-            &mut self.assembly_output,
-        )?;
+        self.emitter.compute_vreg_next_uses(&ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(), &mut *self.allocator)?;
+        self.emitter.emit(&ir.lines().map(|line| line.to_string()).collect::<Vec<String>>(), &mut *self.allocator, &mut self.assembly_output)?;
         Ok(())
     }
 }
