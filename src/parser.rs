@@ -24,454 +24,518 @@ use crate::token::Token;
 use crate::types::Ident;
 use crate::types::Number;
 use std::collections::HashMap;
-use std::process::exit;
 use std::slice::Iter;
+use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
 
 use crate::config::parser::rename_identifier;
 use crate::config::parser::get_renamed_identifier;
 
-static mut TOKEN: Token = Token::Null;
-static mut LINE_NUMBER: usize = 1;
-static DEFAULT_STRING: &str = "";
-static DEFAULT_NUMBER: i64 = 0;
+const STACK_SLOT_SIZE: usize = 8;
+const INITIAL_STACK_OFFSET: usize = 8;
 
-fn next(iter: &mut Iter<(Token, usize)>) {
-    unsafe {
-        match iter.next() {
+pub struct Parser<'a> {
+    current_token: Token,
+    line_number: usize,
+    iter: Iter<'a, (Token, usize)>,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(tokens: &'a mut Vec<(Token, usize)>) -> Self {
+        let mut parser = Self {
+            current_token: Token::Null,
+            line_number: 1,
+            iter: tokens.iter(),
+        };
+        parser.next();
+        parser
+    }
+
+    fn next(&mut self) {
+        match self.iter.next() {
             Some((element, line)) => {
-                TOKEN = element.clone();
-                LINE_NUMBER = *line;
+                self.current_token = element.clone();
+                self.line_number = *line;
             }
             None => {}
         }
     }
-}
 
-fn expect(expected: Token, iter: &mut Iter<(Token, usize)>) {
-    unsafe {
-        if expected != TOKEN {
-            println!(
-                "syntax error, expected: {} and found: {} at line: {}",
-                expected, TOKEN, LINE_NUMBER
-            );
-            exit(1);
+    fn expect(&mut self, expected: Token) -> Result<(), Pl0Error> {
+        if std::mem::discriminant(&expected) != std::mem::discriminant(&self.current_token) {
+            return Err(Pl0Error::SyntaxError {
+                expected: expected.to_string(),
+                found: self.current_token.to_string(),
+                line: self.line_number,
+            });
+        }
+        self.next();
+        Ok(())
+    }
+
+    fn get_identifier(&self, token: &Token) -> Result<String, Pl0Error> {
+        match token {
+            Token::Ident(id) => Ok(id.clone()),
+            _ => Err(Pl0Error::GenericError(format!(
+                "Not able to extract the identifier from token: {:?} at line {}",
+                token, self.line_number
+            ))),
         }
     }
-    next(iter);
-}
 
-fn get_identifier(token: Token) -> String {
-    // extract  value for identifiers.
-    match &token {
-        Token::Ident(id) => id.clone(),
-        _ => {
-            println!("Not able to extract the identifier");
-            exit(1);
+    fn get_string_literal(&self, token: &Token) -> Result<String, Pl0Error> {
+        match token {
+            Token::StringLiteral(literal) => Ok(literal.clone()),
+            _ => Err(Pl0Error::GenericError(format!(
+                "Not able to extract the string literal from token: {:?} at line {}",
+                token, self.line_number
+            ))),
         }
     }
-}
 
-fn get_string_literal(token: Token) -> String {
-    // extract  value for string literal.
-    match &token {
-        Token::StringLiteral(literal) => literal.clone(),
-        _ => {
-            println!("Not able to extract the string literal");
-            exit(1);
+    fn get_numeric_literal(&self, token: &Token) -> Result<i64, Pl0Error> {
+        match token {
+            Token::Number(n) => Ok(*n),
+            _ => Err(Pl0Error::GenericError(format!(
+                "Not able to extract the numeric literal from token: {:?} at line {}",
+                token, self.line_number
+            ))),
         }
     }
-}
 
-fn get_numeric_literal(token: Token) -> i64 {
-    // extract  value for numeric literals.
-    match &token {
-        Token::Number(n) => *n,
-        _ => {
-            println!("Not able to extract the numeric literal");
-            exit(1);
-        }
-    }
-}
+    /// Helper function to parse constant declarations
+    fn parse_const_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<ConstDecl, Pl0Error> {
+        let mut consts = Vec::<(String, i64)>::new();
 
-/* block	= [ "const" ident "=" number { "," ident "=" number } ";" ]
- *            ["var" ident {"," ident} ";"]
- *	    	  { "procedure" ident ";" block ";" } statement .
-*/
-fn block(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Option<Box<dyn Node>> {
-    unsafe {
-        let mut const_decl = ConstDecl::default();
-        let mut var_decl = VarDecl::default();
-        let proc_decl;
-        if TOKEN == Token::Const {
-            let mut consts = Vec::<(String, i64)>::new();
-            let mut num: i64;
-            let mut id: String;
-            expect(Token::Const, iter);
-            id = get_identifier(TOKEN.clone());
+        self.expect(Token::Const)?;
+
+        // Parse first constant
+        let mut id = self.get_identifier(&self.current_token)?;
+        id = rename_identifier(&id, true, mapped_identifiers);
+        self.expect(Token::Ident("".to_string()))?;
+        self.expect(Token::Equal)?;
+        let num = self.get_numeric_literal(&self.current_token)?;
+
+        table.insert(
+            &id,
+            Symbol::new(
+                SymbolType::Constant(num),
+                self.line_number,
+                SymbolLocation::GlobalLabel(id.clone()),
+                true,
+                table.get_scopes_len() - 1,
+            ),
+        );
+        self.expect(Token::Number(0))?;
+        consts.push((id, num));
+
+        // Parse additional constants
+        while self.current_token == Token::Comma {
+            self.expect(Token::Comma)?;
+            let mut id = self.get_identifier(&self.current_token)?;
             id = rename_identifier(&id, true, mapped_identifiers);
-            expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-            expect(Token::Equal, iter);
-            num = get_numeric_literal(TOKEN.clone());
+            self.expect(Token::Ident("".to_string()))?;
+            self.expect(Token::Equal)?;
+            let num = self.get_numeric_literal(&self.current_token)?;
+
             table.insert(
                 &id,
                 Symbol::new(
                     SymbolType::Constant(num),
-                    LINE_NUMBER,
+                    self.line_number,
                     SymbolLocation::GlobalLabel(id.clone()),
                     true,
                     table.get_scopes_len() - 1,
                 ),
             );
-            expect(Token::Number(DEFAULT_NUMBER), iter);
-            consts.push((id.clone(), num));
-            while TOKEN == Token::Comma {
-                expect(Token::Comma, iter);
-                id = get_identifier(TOKEN.clone());
-                id = rename_identifier(&id, true, mapped_identifiers);
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                expect(Token::Equal, iter);
-                num = get_numeric_literal(TOKEN.clone());
-                table.insert(
-                    &id,
-                    Symbol::new(
-                        SymbolType::Constant(num),
-                        LINE_NUMBER,
-                        SymbolLocation::GlobalLabel(id.clone()),
-                        true,
-                        table.get_scopes_len() - 1,
-                    ),
-                );
-                expect(Token::Number(DEFAULT_NUMBER), iter);
-                consts.push((id.clone(), num));
-            }
-            expect(Token::Semicolon, iter);
-            const_decl = ConstDecl::new(consts);
+            self.expect(Token::Number(0))?;
+            consts.push((id, num));
         }
-        let mut offset = 8; // Local offset for this block (procedure or global)
-        if TOKEN == Token::Var {
-            let mut idents = Vec::<String>::new();
-            let mut id: String;
-            expect(Token::Var, iter);
-            id = get_identifier(TOKEN.clone());
-            let is_global = table.get_scopes_len() == 1;
+
+        self.expect(Token::Semicolon)?;
+        Ok(ConstDecl::new(consts))
+    }
+
+    /// Helper function to parse variable declarations
+    fn parse_var_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<VarDecl, Pl0Error> {
+        self.expect(Token::Var)?;
+
+        let is_global = table.get_scopes_len() == 1;
+        let mut offset = INITIAL_STACK_OFFSET;
+        let mut idents = Vec::<String>::new();
+
+        // Parse first variable
+        let mut id = self.get_identifier(&self.current_token)?;
+        id = rename_identifier(&id, is_global, mapped_identifiers);
+        let location = if is_global {
+            SymbolLocation::GlobalLabel(id.clone())
+        } else {
+            SymbolLocation::StackOffset(offset.try_into().unwrap())
+        };
+
+        table.insert(
+            &id,
+            Symbol::new(
+                SymbolType::Variable,
+                self.line_number,
+                location,
+                is_global,
+                table.get_scopes_len() - 1,
+            ),
+        );
+        self.expect(Token::Ident("".to_string()))?;
+        idents.push(id);
+
+        // Parse additional variables
+        while self.current_token == Token::Comma {
+            if !is_global {
+                offset += STACK_SLOT_SIZE;
+            }
+            self.expect(Token::Comma)?;
+            let mut id = self.get_identifier(&self.current_token)?;
             id = rename_identifier(&id, is_global, mapped_identifiers);
             let location = if is_global {
                 SymbolLocation::GlobalLabel(id.clone())
             } else {
-                SymbolLocation::StackOffset(offset)
+                SymbolLocation::StackOffset(offset.try_into().unwrap())
             };
+
             table.insert(
                 &id,
                 Symbol::new(
                     SymbolType::Variable,
-                    LINE_NUMBER,
+                    self.line_number,
                     location,
                     is_global,
                     table.get_scopes_len() - 1,
                 ),
             );
-            expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
+            self.expect(Token::Ident("".to_string()))?;
             idents.push(id);
-            while TOKEN == Token::Comma {
-                if !is_global {
-                    offset += 8;
-                }
-                expect(Token::Comma, iter);
-                id = get_identifier(TOKEN.clone());
-                id = rename_identifier(&id, is_global, mapped_identifiers);
-                let location = if is_global {
-                    SymbolLocation::GlobalLabel(id.clone())
-                } else {
-                    SymbolLocation::StackOffset(offset)
-                };
-                table.insert(
-                    &id,
-                    Symbol::new(
-                        SymbolType::Variable,
-                        LINE_NUMBER,
-                        location,
-                        is_global,
-                        table.get_scopes_len() - 1,
-                    ),
-                );
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                idents.push(id);
-            }
-            expect(Token::Semicolon, iter);
-            var_decl = VarDecl::new(idents);
         }
-        let mut procedurs = Vec::new();
-        while TOKEN == Token::Procedure {
-            // We have to always insert the procedure name in global(top) scope.
-            expect(Token::Procedure, iter);
-            let mut name = get_identifier(TOKEN.clone());
+
+        self.expect(Token::Semicolon)?;
+        Ok(VarDecl::new(idents))
+    }
+
+    /// Helper function to parse procedure declarations
+    fn parse_procedure_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Vec<(String, Option<Box<dyn Node>>)>, Pl0Error> {
+        let mut procedures = Vec::new();
+
+        while self.current_token == Token::Procedure {
+            // Always insert procedure name in global (top) scope
+            self.expect(Token::Procedure)?;
+            let mut name = self.get_identifier(&self.current_token)?;
             name = rename_identifier(&name, true, mapped_identifiers);
+
             table.insert(
                 &name,
                 Symbol::new(
                     SymbolType::Procedure,
-                    LINE_NUMBER,
+                    self.line_number,
                     SymbolLocation::GlobalLabel(name.clone()),
                     true,
                     table.get_scopes_len() - 1,
                 ),
             );
-            table.push_scope();
-            expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-            expect(Token::Semicolon, iter);
-            let block = block(iter, table, mapped_identifiers);
-            expect(Token::Semicolon, iter);
-            procedurs.push((name, block));
-        }
-        proc_decl = ProcDecl::new(procedurs);
-        let stmt = statement(iter, table, mapped_identifiers);
-        return Some(Box::new(Block::new(const_decl, var_decl, proc_decl, stmt)));
-    }
-}
 
-/* statement= [ ident ":=" expression
- *  		  | "call" ident
- *	    	  | "begin" statement { ";" statement } "end"
- *		      | "if" condition "then" statement [ "else" statement ]
- *		      | "while" condition "do" statement
- *		      | "read" ident
- *		      | "write" expression
- *  		  | "writeStr" ( ident | string )
- *	    	  | "exit" expression ]  .
- */
-fn statement(iter: &mut Iter<(Token, usize)>, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Option<Box<dyn Node>> {
-    unsafe {
-        match &TOKEN {
+            table.push_scope();
+            self.expect(Token::Ident("".to_string()))?;
+            self.expect(Token::Semicolon)?;
+
+            let block = self.block(table, mapped_identifiers)?;
+            self.expect(Token::Semicolon)?;
+            procedures.push((name, block));
+        }
+
+        Ok(procedures)
+    }
+
+    /**
+     * Parse a block according to the grammar:
+     * block = [ "const" ident "=" number { "," ident "=" number } ";" ]
+     *         ["var" ident {"," ident} ";"]
+     *         { "procedure" ident ";" block ";" } statement .
+     */
+    fn block(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn Node>>, Pl0Error> {
+        // Parse constant declarations if present
+        let const_decl = if self.current_token == Token::Const {
+            self.parse_const_declarations(table, mapped_identifiers)?
+        } else {
+            ConstDecl::default()
+        };
+
+        // Parse variable declarations if present
+        let var_decl = if self.current_token == Token::Var {
+            self.parse_var_declarations(table, mapped_identifiers)?
+        } else {
+            VarDecl::default()
+        };
+
+        // Parse procedure declarations
+        let procedures = self.parse_procedure_declarations(table, mapped_identifiers)?;
+        let proc_decl = ProcDecl::new(procedures);
+
+        // Parse statement
+        let stmt = self.statement(table, mapped_identifiers)?;
+
+        Ok(Some(Box::new(Block::new(const_decl, var_decl, proc_decl, stmt))))
+    }
+
+    /**
+     * Parse a statement according to the grammar:
+     * statement = [ ident ":=" expression
+     *             | "call" ident
+     *             | "begin" statement { ";" statement } "end"
+     *             | "if" condition "then" statement [ "else" statement ]
+     *             | "while" condition "do" statement
+     *             | "read" ident
+     *             | "write" expression
+     *             | "writeStr" ( ident | string )
+     *             | "exit" expression ]  .
+     */
+    fn statement(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn Node>>, Pl0Error> {
+        match &self.current_token {
             Token::Ident(_) => {
-                let mut id = get_identifier(TOKEN.clone());
+                let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                expect(Token::Assign, iter);
-                let expr = expression(iter, table, mapped_identifiers);
-                return Some(Box::new(AssignStmt::new(id.clone(), expr)));
+                let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                self.expect(Token::Ident("".to_string()))?;
+                self.expect(Token::Assign)?;
+                let expr = self.expression(table, mapped_identifiers)?;
+                Ok(Some(Box::new(AssignStmt::new(id, expr))))
             }
             Token::Call => {
-                expect(Token::Call, iter);
-                let mut id = get_identifier(TOKEN.clone());
+                self.expect(Token::Call)?;
+                let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                table.type_check(&id, SymbolType::Procedure, LINE_NUMBER.clone());
-                expect(Token::Ident(TOKEN.to_string()), iter);
-                return Some(Box::new(CallStmt::new(id)));
+                let _ = table.type_check(&id, SymbolType::Procedure, self.line_number);
+                self.expect(Token::Ident("".to_string()))?;
+                Ok(Some(Box::new(CallStmt::new(id))))
             }
             Token::Begin => {
-                expect(Token::Begin, iter);
+                self.expect(Token::Begin)?;
                 let mut stmts = Vec::new();
-                stmts.push(statement(iter, table, mapped_identifiers));
-                while TOKEN == Token::Semicolon {
-                    expect(Token::Semicolon, iter);
-                    stmts.push(statement(iter, table, mapped_identifiers));
+                stmts.push(self.statement(table, mapped_identifiers)?);
+
+                while self.current_token == Token::Semicolon {
+                    self.expect(Token::Semicolon)?;
+                    stmts.push(self.statement(table, mapped_identifiers)?);
                 }
-                expect(Token::End, iter);
-                return Some(Box::new(BeginStmt::new(stmts)));
+
+                self.expect(Token::End)?;
+                Ok(Some(Box::new(BeginStmt::new(stmts))))
             }
             Token::If => {
-                expect(Token::If, iter);
-                let condition = condition(iter, table, mapped_identifiers);
-                expect(Token::Then, iter);
-                let true_stmt = statement(iter, table, mapped_identifiers);
-                let mut false_stmt = None;
-                if TOKEN == Token::Else {
-                    expect(Token::Else, iter);
-                    false_stmt = statement(iter, table, mapped_identifiers);
-                }
-                return Some(Box::new(IfStmt::new(condition, true_stmt, false_stmt)));
+                self.expect(Token::If)?;
+                let condition = self.condition(table, mapped_identifiers)?;
+                self.expect(Token::Then)?;
+                let true_stmt = self.statement(table, mapped_identifiers)?;
+
+                let false_stmt = if self.current_token == Token::Else {
+                    self.expect(Token::Else)?;
+                    self.statement(table, mapped_identifiers)?
+                } else {
+                    None
+                };
+
+                Ok(Some(Box::new(IfStmt::new(condition, true_stmt, false_stmt))))
             }
             Token::While => {
-                expect(Token::While, iter);
-                let cond = condition(iter, table, mapped_identifiers);
-                expect(Token::Do, iter);
-                let body = statement(iter, table, mapped_identifiers);
-                return Some(Box::new(WhileStatement::new(cond, body)));
+                self.expect(Token::While)?;
+                let condition = self.condition(table, mapped_identifiers)?;
+                self.expect(Token::Do)?;
+                let body = self.statement(table, mapped_identifiers)?;
+                Ok(Some(Box::new(WhileStatement::new(condition, body))))
             }
             Token::Write => {
-                expect(Token::Write, iter);
-                if TOKEN == Token::LParen {
-                    expect(Token::LParen, iter);
+                self.expect(Token::Write)?;
+
+                // Optional parentheses
+                if self.current_token == Token::LParen {
+                    self.expect(Token::LParen)?;
                 }
-                let expr = expression(iter, table, mapped_identifiers);
-                if TOKEN == Token::RParen {
-                    expect(Token::RParen, iter);
+
+                let expr = self.expression(table, mapped_identifiers)?;
+
+                if self.current_token == Token::RParen {
+                    self.expect(Token::RParen)?;
                 }
-                return Some(Box::new(Write::new(expr)));
+
+                Ok(Some(Box::new(Write::new(expr))))
             }
             Token::WriteStr => {
-                expect(Token::WriteStr, iter);
-                expect(Token::LParen, iter);
-                match &TOKEN {
+                self.expect(Token::WriteStr)?;
+                self.expect(Token::LParen)?;
+
+                let result = match &self.current_token {
                     Token::Ident(_) => {
-                        let mut id = get_identifier(TOKEN.clone());
+                        let mut id = self.get_identifier(&self.current_token)?;
                         id = get_renamed_identifier(&id, mapped_identifiers);
-                        table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
-                        expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                        expect(Token::RParen, iter);
-                        return Some(Box::new(WriteStr::new(id.clone())));
+                        let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                        self.expect(Token::Ident("".to_string()))?;
+                        Box::new(WriteStr::new(id))
                     }
                     Token::StringLiteral(_) => {
-                        let str = get_string_literal(TOKEN.clone());
-                        expect(Token::StringLiteral(DEFAULT_STRING.to_string()), iter);
-                        expect(Token::RParen, iter);
-                        return Some(Box::new(WriteStr::new(str)));
+                        let string_literal = self.get_string_literal(&self.current_token)?;
+                        self.expect(Token::StringLiteral("".to_string()))?;
+                        Box::new(WriteStr::new(string_literal))
                     }
                     _ => {
-                        println!("writeStr takes a string");
-                        exit(0);
+                        return Err(Pl0Error::GenericError(format!(
+                            "writeStr takes a string or identifier at line {}",
+                            self.line_number
+                        )));
                     }
-                }
+                };
+
+                self.expect(Token::RParen)?;
+                Ok(Some(result))
             }
             Token::Read => {
-                expect(Token::Read, iter);
-                if TOKEN == Token::LParen {
-                    expect(Token::LParen, iter);
+                self.expect(Token::Read)?;
+
+                // Optional parentheses
+                if self.current_token == Token::LParen {
+                    self.expect(Token::LParen)?;
                 }
-                let mut ident = get_identifier(TOKEN.clone());
+
+                let mut ident = self.get_identifier(&self.current_token)?;
                 ident = get_renamed_identifier(&ident, mapped_identifiers);
-                table.type_check(&ident, SymbolType::Identifier, LINE_NUMBER.clone());
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                if TOKEN == Token::RParen {
-                    expect(Token::RParen, iter);
+                let _ = table.type_check(&ident, SymbolType::Identifier, self.line_number);
+                self.expect(Token::Ident("".to_string()))?;
+
+                if self.current_token == Token::RParen {
+                    self.expect(Token::RParen)?;
                 }
-                return Some(Box::new(Read::new(ident)));
+
+                Ok(Some(Box::new(Read::new(ident))))
             }
             Token::Exit => {
-                expect(Token::Exit, iter);
-                let expr = expression(iter, table, mapped_identifiers);
-                return Some(Box::new(Exit::new(expr)));
+                self.expect(Token::Exit)?;
+                let expr = self.expression(table, mapped_identifiers)?;
+                Ok(Some(Box::new(Exit::new(expr))))
             }
-            _ => {
-                return None;
-            }
+            _ => Ok(None),
         }
     }
-}
 
-// condition	= "odd" expression
-//      		| expression ( comparator ) expression .
-fn condition(
-    iter: &mut Iter<(Token, usize)>,
-    table: &mut SymbolTable,
-    mapped_identifiers: &mut HashMap<String, String>
-) -> Option<Box<dyn ExpressionNode>> {
-    unsafe {
-        if TOKEN == Token::Odd {
-            expect(Token::Odd, iter);
-            let expr = expression(iter, table, mapped_identifiers);
-            return Some(Box::new(OddCondition::new(expr)));
+    /**
+     * Parse a condition according to the grammar:
+     * condition = "odd" expression
+     *           | expression ( comparator ) expression .
+     */
+    fn condition(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
+        if self.current_token == Token::Odd {
+            self.expect(Token::Odd)?;
+            let expr = self.expression(table, mapped_identifiers)?;
+            Ok(Some(Box::new(OddCondition::new(expr))))
         } else {
-            let left = expression(iter, table, mapped_identifiers);
-            let mut op = String::from("");
-            match &TOKEN {
-                Token::Equal
-                | Token::Hash
-                | Token::LessThan
-                | Token::GreaterThan
-                | Token::LessThanEqual
-                | Token::GreaterThanEqual => {
-                    op = TOKEN.to_string();
-                    next(iter);
+            let left = self.expression(table, mapped_identifiers)?;
+
+            let operator = match &self.current_token {
+                Token::Equal | Token::Hash | Token::LessThan | Token::GreaterThan
+                | Token::LessThanEqual | Token::GreaterThanEqual => {
+                    let op = self.current_token.to_string();
+                    self.next();
+                    op
                 }
                 _ => {
-                    println!("invalid conditional at line {} ", LINE_NUMBER);
+                    return Err(Pl0Error::GenericError(format!(
+                        "Invalid conditional operator at line {}",
+                        self.line_number
+                    )));
                 }
-            }
-            let right = expression(iter, table, mapped_identifiers);
-            return Some(Box::new(RelationalCondition::new(left, right, op)));
+            };
+
+            let right = self.expression(table, mapped_identifiers)?;
+            Ok(Some(Box::new(RelationalCondition::new(left, right, operator))))
         }
     }
-}
 
-//expression	= [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term }
-fn expression(
-    iter: &mut Iter<(Token, usize)>,
-    table: &mut SymbolTable,
-    mapped_identifiers: &mut HashMap<String, String>
-) -> Option<Box<dyn ExpressionNode>> {
-    unsafe {
-        if TOKEN == Token::Plus || TOKEN == Token::Minus || TOKEN == Token::Not {
-            next(iter);
+    /**
+     * Parse an expression according to the grammar:
+     * expression = [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term }
+     */
+    fn expression(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
+        // Handle unary operators
+        if matches!(self.current_token, Token::Plus | Token::Minus | Token::Not) {
+            self.next();
         }
-        let mut lhs = term(iter, table, mapped_identifiers);
-        while TOKEN == Token::Plus || TOKEN == Token::Minus || TOKEN == Token::Or {
-            let operator = TOKEN.to_string();
-            next(iter);
-            let rhs = term(iter, table, mapped_identifiers);
+
+        let mut lhs = self.term(table, mapped_identifiers)?;
+
+        while matches!(self.current_token, Token::Plus | Token::Minus | Token::Or) {
+            let operator = self.current_token.to_string();
+            self.next();
+            let rhs = self.term(table, mapped_identifiers)?;
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
-        return lhs;
-    }
-}
 
-//term		= factor { ( "*" | "/" | "mod" | "and" ) factor }
-fn term(
-    iter: &mut Iter<(Token, usize)>,
-    table: &mut SymbolTable,
-    mapped_identifiers: &mut HashMap<String, String>
-) -> Option<Box<dyn ExpressionNode>> {
-    unsafe {
-        let mut lhs = factor(iter, table, mapped_identifiers);
-        while TOKEN == Token::Multiply
-            || TOKEN == Token::Divide
-            || TOKEN == Token::Modulo
-            || TOKEN == Token::And
-        {
-            let operator = TOKEN.to_string();
-            next(iter);
-            let rhs = factor(iter, table, mapped_identifiers);
+        Ok(lhs)
+    }
+
+    /**
+     * Parse a term according to the grammar:
+     * term = factor { ( "*" | "/" | "mod" | "and" ) factor }
+     */
+    fn term(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
+        let mut lhs = self.factor(table, mapped_identifiers)?;
+
+        while matches!(
+            self.current_token,
+            Token::Multiply | Token::Divide | Token::Modulo | Token::And
+        ) {
+            let operator = self.current_token.to_string();
+            self.next();
+            let rhs = self.factor(table, mapped_identifiers)?;
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
-        return lhs;
-    }
-}
 
-/* factor	= ident | number | "(" expression ")" . */
-fn factor(
-    iter: &mut Iter<(Token, usize)>,
-    table: &mut SymbolTable,
-    mapped_identifiers: &mut HashMap<String, String>
-) -> Option<Box<dyn ExpressionNode>> {
-    unsafe {
-        match TOKEN {
+        Ok(lhs)
+    }
+
+    /**
+     * Parse a factor according to the grammar:
+     * factor = ident | number | "(" expression ")" .
+     */
+    fn factor(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
+        match &self.current_token {
             Token::Ident(_) => {
-                let mut id = get_identifier(TOKEN.clone());
+                let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                table.type_check(&id, SymbolType::Identifier, LINE_NUMBER.clone());
-                expect(Token::Ident(DEFAULT_STRING.to_string()), iter);
-                return Some(Box::new(Ident::new(id.to_string())));
+                let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                self.expect(Token::Ident("".to_string()))?;
+                Ok(Some(Box::new(Ident::new(id))))
             }
             Token::Number(_) => {
-                let num = get_numeric_literal(TOKEN.clone());
-                expect(Token::Number(DEFAULT_NUMBER), iter);
-                return Some(Box::new(Number::new(num)));
+                let num = self.get_numeric_literal(&self.current_token)?;
+                self.expect(Token::Number(0))?;
+                Ok(Some(Box::new(Number::new(num))))
             }
             Token::LParen => {
-                expect(Token::LParen, iter);
-                let expr = expression(iter, table, mapped_identifiers);
-                expect(Token::RParen, iter);
-                return expr;
+                self.expect(Token::LParen)?;
+                let expr = self.expression(table, mapped_identifiers)?;
+                self.expect(Token::RParen)?;
+                Ok(expr)
             }
-            _ => {
-                None // revisit it.
-            }
+            _ => Ok(None), // No factor found
         }
     }
-}
 
-// program	= block "."
-fn program(tokens: &mut Vec<(Token, usize)>, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Option<Box<dyn Node>> {
-    let mut iter: Iter<(Token, usize)> = tokens.iter();
-    next(&mut iter);
-    let block = block(&mut iter, table, mapped_identifiers);
-    expect(Token::Dot, &mut iter);
-    let dot = String::from(".");
-    return Some(Box::new(Program::new(block, dot)));
-}
+    /**
+     * Parse a program according to the grammar:
+     * program = block "."
+     */
+    fn program(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn Node>>, Pl0Error> {
+        let block = self.block(table, mapped_identifiers)?;
+        self.expect(Token::Dot)?;
+        let dot = String::from(".");
+        Ok(Some(Box::new(Program::new(block, dot))))
+    }
 
-pub fn parse(tokens: &mut Vec<(Token, usize)>, table: &mut SymbolTable) -> Option<Box<dyn Node>> {
-    let mut mapped_identifiers = HashMap::new();
-    return program(tokens, table, &mut mapped_identifiers);
+    pub fn parse(&mut self, table: &mut SymbolTable) -> Result<Option<Box<dyn Node>>, Pl0Error> {
+        let mut mapped_identifiers = HashMap::new();
+        self.program(table, &mut mapped_identifiers)
+    }
 }
