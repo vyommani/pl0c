@@ -119,6 +119,7 @@ pub struct Arm64RegisterAllocator {
     pool: RegisterPool,
     reg_map: [Option<Register<RegisterName>>; NUM_REGS],
     pub vreg_map: HashMap<String, Register<RegisterName>>,
+    preg_vreg_map: HashMap<usize, String>,
     spill_manager: SpillManager,
     live_range_manager: LiveRangeManager,
     pub used_callee_saved: HashSet<usize>, // Track used callee-saved registers
@@ -131,6 +132,7 @@ impl Arm64RegisterAllocator {
         let pool = RegisterPool::new();
         let mut reg_map: [Option<Register<RegisterName>>; NUM_REGS] = Default::default();
         let vreg_map = HashMap::with_capacity(16);
+        let preg_vreg_map = HashMap::with_capacity(16);
         let live_range_manager = LiveRangeManager::new();
         let spill_manager = SpillManager::new();
         let used_callee_saved = HashSet::new();
@@ -154,6 +156,7 @@ impl Arm64RegisterAllocator {
             pool,
             reg_map,
             vreg_map,
+            preg_vreg_map,
             spill_manager,
             live_range_manager,
             used_callee_saved,
@@ -194,11 +197,10 @@ impl Arm64RegisterAllocator {
                 self.pool.free(p_reg);
                 self.allocated_from_pool.remove(&p_reg);
             }
-            // Find and remove vreg_map entry by scanning for matching v_reg
-            let vreg_key_to_remove = self.vreg_map.iter().find_map(|(key, reg)| if reg.v_reg == v_reg { Some(key.clone()) } else { None });
-            if let Some(key) = vreg_key_to_remove {
-                self.vreg_map.remove(&key);
+            if let Some(vreg_name) = self.preg_vreg_map.get(&p_reg){
+                self.vreg_map.remove(vreg_name);
             }
+            self.preg_vreg_map.remove(&p_reg);
         }
     }
 
@@ -210,8 +212,9 @@ impl Arm64RegisterAllocator {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses;
                 reg.address = v_reg.address;
-                reg.spill_offset = None; // New allocation, not spilled
+                reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                self.preg_vreg_map.insert(p_reg, vreg_name.to_string());
                 self.allocated_from_pool.insert(p_reg);
                 return Ok(reg.clone());
             }
@@ -223,8 +226,9 @@ impl Arm64RegisterAllocator {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses;
                 reg.address = v_reg.address;
-                reg.spill_offset = None; // New allocation, not spilled
+                reg.spill_offset = None;
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                self.preg_vreg_map.insert(p_reg, vreg_name.to_string());
                 self.allocated_from_pool.insert(p_reg);
                 if p_reg >= 19 && p_reg <= 28 {
                     self.used_callee_saved.insert(p_reg);
@@ -265,6 +269,7 @@ impl Arm64RegisterAllocator {
             reg.spill_offset = None;
             let new_reg = reg.clone();
             self.vreg_map.insert(vreg_name.to_string(), new_reg.clone());
+            self.preg_vreg_map.insert(spill_idx, vreg_name.to_string());
             if (19..=28).contains(&spill_idx) {
                 self.used_callee_saved.insert(spill_idx);
             }
@@ -319,6 +324,7 @@ impl RegisterAllocator for Arm64RegisterAllocator {
                     updated_reg.spill_offset = None;
                     updated_reg.p_reg = allocated.p_reg;
                 }
+                self.preg_vreg_map.insert(allocated.p_reg, v_reg.to_string());
                 emitter.flush()?;
                 return Ok(allocated.p_reg);
             }
