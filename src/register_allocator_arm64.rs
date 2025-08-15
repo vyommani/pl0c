@@ -1,7 +1,7 @@
 use crate::code_emitter::CodeEmitter;
 use crate::code_emitter::StringCodeEmitter;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fmt::{self, Write as FmtWrite};
 
 use crate::live_range_manager::LiveRangeManager;
@@ -61,10 +61,15 @@ impl RegisterName {
                 can_spill: true,
                 special_purpose: "Indirect result, temporary",
             },
-            X9 | X10 | X11 | X13 | X14 | X15 => &RegisterConstraints {
+            X9 | X10 | X13 | X14 | X15 => &RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,
                 special_purpose: "Caller-saved temporary",
+            },
+            X11 => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Reserved for temporary computations (emit_mod)",
             },
             X12 => &RegisterConstraints {
                 can_allocate: false,
@@ -116,8 +121,9 @@ pub struct Arm64RegisterAllocator {
     pub vreg_map: HashMap<String, Register<RegisterName>>,
     spill_manager: SpillManager,
     live_range_manager: LiveRangeManager,
-    current_instruction: i32, // Track current instruction index
-    pub used_callee_saved: std::collections::HashSet<usize>, // Track used callee-saved registers
+    pub used_callee_saved: HashSet<usize>, // Track used callee-saved registers
+    // Track which registers were allocated from the pool vs pre-existing
+    allocated_from_pool: HashSet<usize>,
 }
 
 impl Arm64RegisterAllocator {
@@ -127,7 +133,8 @@ impl Arm64RegisterAllocator {
         let vreg_map = HashMap::with_capacity(16);
         let live_range_manager = LiveRangeManager::new();
         let spill_manager = SpillManager::new();
-        let used_callee_saved = std::collections::HashSet::new();
+        let used_callee_saved = HashSet::new();
+        let allocated_from_pool = HashSet::new();
 
         for i in 0..NUM_REGS {
             if let Some(name) = RegisterName::from_index(i) {
@@ -149,8 +156,8 @@ impl Arm64RegisterAllocator {
             vreg_map,
             spill_manager,
             live_range_manager,
-            current_instruction: 0,
             used_callee_saved,
+            allocated_from_pool,
         }
     }
 
@@ -170,36 +177,42 @@ impl Arm64RegisterAllocator {
         if p_reg >= NUM_REGS {
             return;
         }
+        
         if let Some(reg) = self.reg_map[p_reg].as_mut() {
             let v_reg = reg.v_reg;
+            // Free spill slot if allocated
             if let Some(spill_offset) = reg.spill_offset {
                 self.spill_manager.free_slot(spill_offset);
             }
+            // Reset register state
             reg.v_reg = usize::MAX;
             reg.next_uses.clear();
             reg.address = 0;
             reg.spill_offset = None;
-            self.pool.free(p_reg);
-            self.vreg_map.remove(&v_reg.to_string()); // Clear vreg_map
-            self.live_range_manager.remove_range(v_reg);
+            // Only free from pool if it was allocated from pool
+            if self.allocated_from_pool.contains(&p_reg) {
+                self.pool.free(p_reg);
+                self.allocated_from_pool.remove(&p_reg);
+            }
+            // Find and remove vreg_map entry by scanning for matching v_reg
+            let vreg_key_to_remove = self.vreg_map.iter().find_map(|(key, reg)| if reg.v_reg == v_reg { Some(key.clone()) } else { None });
+            if let Some(key) = vreg_key_to_remove {
+                self.vreg_map.remove(&key);
+            }
         }
     }
 
     pub fn alloc(&mut self, v_reg: &Register<RegisterName>, vreg_name: &str, emitter: &mut dyn CodeEmitter) -> Pl0Result<Register<RegisterName>> {
-        // Update next_uses based on current instruction
-        let next_uses: Vec<i32> = v_reg.next_uses.iter()
-        .copied()
-        .filter(|&use_pos| use_pos >= self.current_instruction)
-        .collect();
-
+        let next_uses = self.live_range_manager.filter_next_uses(&v_reg.next_uses);
         // Try caller-saved registers first
         if let Some(p_reg) = self.pool.allocate_caller_saved() {
             if let Some(reg) = self.reg_map[p_reg].as_mut() {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses;
                 reg.address = v_reg.address;
-                reg.spill_offset = None;
+                reg.spill_offset = None; // New allocation, not spilled
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                self.allocated_from_pool.insert(p_reg);
                 return Ok(reg.clone());
             }
         }
@@ -210,8 +223,9 @@ impl Arm64RegisterAllocator {
                 reg.v_reg = v_reg.v_reg;
                 reg.next_uses = next_uses;
                 reg.address = v_reg.address;
-                reg.spill_offset = None;
+                reg.spill_offset = None; // New allocation, not spilled
                 self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+                self.allocated_from_pool.insert(p_reg);
                 if p_reg >= 19 && p_reg <= 28 {
                     self.used_callee_saved.insert(p_reg);
                 }
@@ -220,50 +234,50 @@ impl Arm64RegisterAllocator {
         }
 
         // Spill: Select register with furthest next use
-        let (spill_idx, spilled) = self.reg_map.iter().enumerate()
+        let (spill_idx, _spilled) = self.reg_map.iter().enumerate()
             .filter_map(|(i, r)| r.as_ref().map(|reg| (i, reg)))
             .filter(|(_, reg)| reg.name.get_constraints().can_spill && reg.v_reg != usize::MAX)
             .max_by_key(|(_, reg)| reg.next_uses.first().copied().unwrap_or(i32::MAX))
             .ok_or(Pl0Error::NoRegistersAvailable)?;
 
         // Find vreg name for spilled register
-        let spilled_vreg = self.vreg_map.iter().find_map(|(name, reg)| (reg.v_reg == spilled.v_reg).then(|| name.clone()))
-            .ok_or_else(|| Pl0Error::RegisterAllocationError {message: format!("Spilled register {} has no vreg mapping", spill_idx)})?;
+        let spilled_vreg = self.vreg_map.iter()
+            .find_map(|(name, reg)| (reg.p_reg == spill_idx).then(|| name.clone()))
+            .ok_or_else(|| Pl0Error::RegisterAllocationError {
+                message: format!("Spilled register {} has no vreg mapping", spill_idx)
+            })?;
 
-        // Emit spill code
+        // Allocate spill slot and emit spill code
         let spill_offset = self.spill_manager.allocate_slot();
-        let spill_reg_name = RegisterName::from_index(spill_idx)
-            .ok_or_else(|| Pl0Error::RegisterAllocationError {message: format!("Invalid register index: {}", spill_idx)})?;
+        let spill_reg_name = RegisterName::from_index(spill_idx).ok_or_else(|| Pl0Error::RegisterAllocationError {message: format!("Invalid register index: {}", spill_idx)})?;
         emitter.emit(&format!("str {}, [sp, -{}]", spill_reg_name, spill_offset))?;
 
-        // Update vreg_map for spilled register
-        if let Some(spilled_reg) = self.reg_map[spill_idx].as_mut() {
+        // Update spilled register's state in vreg_map
+        if let Some(spilled_reg) = self.vreg_map.get_mut(&spilled_vreg) {
             spilled_reg.spill_offset = Some(spill_offset);
-            self.vreg_map.insert(spilled_vreg.clone(), spilled_reg.clone());
         }
 
-        // Update reg_map for new allocation
+        // Allocate the register to new vreg
         if let Some(reg) = self.reg_map[spill_idx].as_mut() {
             reg.v_reg = v_reg.v_reg;
             reg.next_uses = next_uses;
             reg.address = v_reg.address;
-            reg.spill_offset = Some(spill_offset);
-            self.vreg_map.insert(vreg_name.to_string(), reg.clone());
+            reg.spill_offset = None;
+            let new_reg = reg.clone();
+            self.vreg_map.insert(vreg_name.to_string(), new_reg.clone());
             if (19..=28).contains(&spill_idx) {
                 self.used_callee_saved.insert(spill_idx);
             }
-            Ok(reg.clone())
+            Ok(new_reg)
         } else {
             Err(Pl0Error::NoRegistersAvailable)
         }
     }
 
-    // Add a method to get the used callee-saved registers
-    pub fn get_used_callee_saved(&self) -> &std::collections::HashSet<usize> {
+    pub fn get_used_callee_saved(&self) -> &HashSet<usize> {
         &self.used_callee_saved
     }
 
-    // Add a method to get the total spill space needed
     pub fn get_spill_space_needed(&self) -> i32 {
         self.spill_manager.total_space()
     }
@@ -286,29 +300,31 @@ impl RegisterAllocator for Arm64RegisterAllocator {
     }
 
     fn ensure(&mut self, v_reg: &str, output: &mut String) -> Pl0Result<usize> {
+        // First, check if register is already allocated and not spilled
         if let Some(reg) = self.vreg_map.get(v_reg) {
-            for mapped_reg in self.reg_map.iter().flatten() {
-                if mapped_reg.v_reg == reg.v_reg && mapped_reg.spill_offset.is_none() {
-                    return Ok(mapped_reg.p_reg);
+            // If register is allocated and not spilled, return it
+            if reg.spill_offset.is_none() {
+                return Ok(reg.p_reg);
+            }
+            // If register is spilled, we need to reload it
+            if let Some(spill_offset) = reg.spill_offset {
+                // Try to allocate a new physical register
+                let vreg_copy = reg.clone();
+                let mut emitter = StringCodeEmitter::new(output);
+                let allocated = self.alloc(&vreg_copy, v_reg, &mut emitter)?;
+                // Emit load from spill location
+                emitter.emit(&format!("ldr {}, [sp, -{}]", allocated.name, spill_offset))?;
+                // Update register state - no longer spilled
+                if let Some(updated_reg) = self.vreg_map.get_mut(v_reg) {
+                    updated_reg.spill_offset = None;
+                    updated_reg.p_reg = allocated.p_reg;
                 }
+                emitter.flush()?;
+                return Ok(allocated.p_reg);
             }
         }
-        if let Some(vreg) = self.vreg_map.get(v_reg).cloned() {
-            let mut emitter = StringCodeEmitter::new(output);
-            let allocated = self.alloc(&vreg, v_reg, &mut emitter)?;
-            if let Some(spill_offset) = vreg.spill_offset {
-                emitter.emit_ldr(&allocated.name, spill_offset)?;
-                if let Some(reg) = self.reg_map[allocated.p_reg].as_mut() {
-                    reg.spill_offset = None;
-                    reg.next_uses
-                        .retain(|&use1| use1 >= self.current_instruction);
-                }
-            }
-            emitter.flush()?;
-            Ok(allocated.p_reg)
-        } else {
-            Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
-        }
+        // If register doesn't exist in vreg_map, it's an error
+        Err(Pl0Error::RegisterAllocationError { message: format!("Unknown register: {}", v_reg) })
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
