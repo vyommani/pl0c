@@ -25,7 +25,6 @@ use crate::types::Ident;
 use crate::types::Number;
 use std::collections::HashMap;
 use std::slice::Iter;
-use crate::errors::Pl0Result;
 use crate::errors::Pl0Error;
 
 use crate::config::parser::rename_identifier;

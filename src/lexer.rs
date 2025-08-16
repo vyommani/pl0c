@@ -5,7 +5,7 @@ use crate::errors::{Pl0Error, Pl0Result};
 pub fn scan(
     state: &mut LineNumber,
     file_content: &str,
-    table: &mut SymbolTable,
+    _table: &mut SymbolTable,
 ) -> Pl0Result<Vec<(Token, usize)>> {
     let mut chars = file_content.chars().peekable();
     let mut lexeme: Vec<(Token, usize)> = vec![];
@@ -14,7 +14,7 @@ pub fn scan(
     'lexer: loop {
         if let Some(c) = chars.peek() {
             if (*c).eq(&'{') {
-                comment(&mut chars, state);
+                let _ = comment(&mut chars, state);
             } else if (*c).is_whitespace() {
                 whitespace(&mut chars, state);
             } else if (*c).is_alphabetic() || (*c).eq(&'_') {

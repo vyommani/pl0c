@@ -1,7 +1,6 @@
 use crate::code_emitter::CodeEmitter;
 use crate::code_emitter::StringCodeEmitter;
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write as FmtWrite};
 
 use crate::live_range_manager::LiveRangeManager;
@@ -111,9 +110,6 @@ impl RegisterName {
 }
 
 const NUM_REGS: usize = 32; // X0-X30, SP
-const ALLOCATABLE_INDICES: &[usize] = &[
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-];
 
 pub struct Arm64RegisterAllocator {
     pool: RegisterPool,
@@ -182,7 +178,6 @@ impl Arm64RegisterAllocator {
         }
         
         if let Some(reg) = self.reg_map[p_reg].as_mut() {
-            let v_reg = reg.v_reg;
             // Free spill slot if allocated
             if let Some(spill_offset) = reg.spill_offset {
                 self.spill_manager.free_slot(spill_offset);

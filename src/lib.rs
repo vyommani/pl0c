@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path, process::exit};
+use std::{fs::File, io::Read, path::Path};
 
 pub mod assembly_emitter_arm64;
 pub mod assembly_emitter_x86_64;

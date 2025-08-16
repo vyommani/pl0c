@@ -2,7 +2,6 @@ use crate::assembly_generator::RegisterAllocator;
 use crate::register_allocator_common::Register;
 use crate::register_allocator_x86_64::RegisterName;
 use crate::errors::Pl0Result;
-use crate::utils::string_utils::write_line;
 
 pub struct X86_64Runtime;
 

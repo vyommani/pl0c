@@ -13,7 +13,6 @@ use regex::Regex;
 use std::{
     collections::HashMap,
     collections::HashSet,
-    io::{self},
 };
 use crate::config::register_allocation::RESERVED_REG;
 pub struct Arm64AssemblyEmitter;
@@ -83,7 +82,7 @@ impl Arm64AssemblyEmitter {
 
     fn emit_load_immediate(&self, reg: usize, imm: usize, output: &mut String) -> Pl0Result<()> {
         let imm_val = imm as u64;
-        if imm >= 0 && imm <= 0xFFFF {
+        if imm <= 0xFFFF {
             write_line(output, format_args!("    mov x{}, #{}\n", reg, imm_val))?;
         } else {
             write_line(output, format_args!("    movz x{}, #{}\n", reg, imm_val & 0xFFFF))?;

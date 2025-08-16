@@ -10,10 +10,7 @@ use crate::errors::Pl0Result;
 use crate::errors::Pl0Error;
 
 use regex::Regex;
-use std::{
-    collections::{HashMap, HashSet},
-    io::{self},
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::runtime_x86_64::X86_64Runtime;
 pub struct X86_64AssemblyEmitter;
@@ -333,7 +330,7 @@ impl X86_64AssemblyEmitter {
                 Self::emit_epilogue(output, stack_analyzer)?;
                 *in_proc = false;
             }
-            IROp::Exit => {self.emit_exit(output);}
+            IROp::Exit => {let _ = self.emit_exit(output);}
             IROp::Li => self.emit_li(rest, idx, allocator, output, constants)?,
             IROp::Ld => self.emit_ld(rest, idx, allocator, output, constants)?,
             IROp::St => self.emit_st(rest, idx, allocator, output, constants)?,

@@ -1,7 +1,6 @@
 use crate::assembly_generator::RegisterAllocator;
 use crate::utils::string_utils::write_line;
 use crate::errors::Pl0Result;
-use std::io;
 pub struct Arm64Runtime;
 
 impl Arm64Runtime {
