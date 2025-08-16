@@ -16,7 +16,7 @@ use crate::errors::Pl0Error;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
     X0 = 0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15,
-    X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, SP,
+    X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, SP,None,
 }
 
 impl fmt::Display for RegisterName {
@@ -31,11 +31,11 @@ impl fmt::Display for RegisterName {
     }
 }
 
-const ALL_REGS: [RegisterName; 32] = [ RegisterName::X0, RegisterName::X1, RegisterName::X2, RegisterName::X3, RegisterName::X4,
+const ALL_REGS: [RegisterName; 33] = [ RegisterName::X0, RegisterName::X1, RegisterName::X2, RegisterName::X3, RegisterName::X4,
     RegisterName::X5, RegisterName::X6, RegisterName::X7, RegisterName::X8, RegisterName::X9, RegisterName::X10,RegisterName::X11,
     RegisterName::X12, RegisterName::X13, RegisterName::X14, RegisterName::X15, RegisterName::X16, RegisterName::X17, RegisterName::X18,
     RegisterName::X19, RegisterName::X20, RegisterName::X21, RegisterName::X22, RegisterName::X23, RegisterName::X24,RegisterName::X25,
-    RegisterName::X26, RegisterName::X27, RegisterName::X28, RegisterName::X29, RegisterName::X30, RegisterName::SP,
+    RegisterName::X26, RegisterName::X27, RegisterName::X28, RegisterName::X29, RegisterName::X30, RegisterName::SP,RegisterName::None,
 ];
 
 impl RegisterName {
@@ -104,6 +104,11 @@ impl RegisterName {
                 can_allocate: false,
                 can_spill: false,
                 special_purpose: "Stack pointer",
+            },
+            None => &RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Invalid register",
             },
         }
     }

@@ -135,7 +135,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
                 } else {
                     (0, 0)
                 };
-            let reg = Register::new(usize::MAX, i, RegisterName::RSP, uses.into_iter().map(|u| u as i32).collect(), live_range.1.into());
+            let reg = Register::new(usize::MAX, i, RegisterName::None, uses.into_iter().map(|u| u as i32).collect(), live_range.1.into());
             if let Some(alloc) = allocator.as_any_mut().downcast_mut::<X86_64RegisterAllocator>() {
                 alloc.vreg_map.insert(vreg, reg);
             }

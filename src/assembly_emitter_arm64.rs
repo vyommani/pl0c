@@ -53,7 +53,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
             }
         }
         for (i, (vreg, uses)) in vreg_uses.into_iter().enumerate() {
-            let reg = Register::new(usize::MAX, i, RegisterName::SP, uses.iter().map(|u| *u as i32).collect(), 0);
+            let reg = Register::new(usize::MAX, i, RegisterName::None, uses.iter().map(|u| *u as i32).collect(), 0);
             if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>()
             {
                 alloc.vreg_map.insert(vreg, reg);

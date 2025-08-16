@@ -6,7 +6,7 @@ use crate::errors::{Pl0Result, Pl0Error};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {
-    RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, R8, R9, R10, R11, R12, R13, R14, R15,
+    RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, R8, R9, R10, R11, R12, R13, R14, R15, None,
 }
 
 impl fmt::Display for RegisterName {
@@ -28,6 +28,7 @@ impl fmt::Display for RegisterName {
             RegisterName::R13 => "r13",
             RegisterName::R14 => "r14",
             RegisterName::R15 => "r15",
+            RegisterName::None => "none",
         };
         write!(f, "{}", s)
     }
