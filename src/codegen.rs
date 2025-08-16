@@ -596,20 +596,12 @@ impl ASTVisitor for IRGenerator {
                 // Local variable in procedure - use stack offset
                 let offset = self.local_var_offset;
                 self.local_var_offset += WORD_SIZE as isize; // 8 bytes per variable
-                self.update_symbol_location(
-                    var_name,
-                    SymbolLocation::StackOffset(offset),
-                    false,
-                );
+                self.update_symbol_location(var_name, SymbolLocation::StackOffset(offset), false);
             } else {
                 // Global variable
                 let mut emitter = StringCodeEmitter::new(&mut self.bss_output);
                 emitter.emit_var(var_name)?;
-                self.update_symbol_location(
-                    var_name,
-                    SymbolLocation::GlobalLabel(var_name.clone()),
-                    true,
-                );
+                self.update_symbol_location(var_name, SymbolLocation::GlobalLabel(var_name.clone()), true);
             }
         }
         Ok(())

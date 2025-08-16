@@ -48,7 +48,7 @@ pub mod register_allocation {
     pub const STACK_POINTER_REG: usize = 31; // sp
 
     // Temporary register for address calculations
-    pub const TEMP_ADDRESS_REG: u8 = 12; // x12
+    pub const RESERVED_REG: u8 = 12; // x12
 }
 
 // Parser and symbol table constants

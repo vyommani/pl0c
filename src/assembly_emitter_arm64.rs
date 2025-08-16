@@ -15,6 +15,7 @@ use std::{
     collections::HashSet,
     io::{self},
 };
+use crate::config::register_allocation::RESERVED_REG;
 pub struct Arm64AssemblyEmitter;
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {
@@ -65,7 +66,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
 
 impl Arm64AssemblyEmitter {
     fn validate_register(&self, reg: usize, error_msg: &str) -> Pl0Result<()> {
-        if reg == 12 {
+        if reg == RESERVED_REG.into() {
             Err(Pl0Error::RegisterConstraintViolation(error_msg.to_string()))
         } else {
             Ok(())
@@ -149,7 +150,7 @@ impl Arm64AssemblyEmitter {
                 )?;
             }
         } else {
-            self.emit_var_addr(output, 12, src_or_dst)?;
+            self.emit_var_addr(output, RESERVED_REG, src_or_dst)?;
             write_line(
                 output,
                 format_args!(
@@ -414,7 +415,7 @@ impl Arm64AssemblyEmitter {
     }
 
     fn emit_var_addr(&self, output: &mut String, reg: u8, var: &str) -> Pl0Result<()> {
-        if reg != 12 {
+        if reg != RESERVED_REG {
             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
         }
         write_line(output, format_args!("    adrp x{}, {}@PAGE\n", reg, var))?;
@@ -516,7 +517,7 @@ impl Arm64AssemblyEmitter {
                         write_line(output, format_args!("    {} x{}, x{}, #{}\n", op, pdst, psrc1, imm))?;
                     } else {
                         let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
-                        if temp_reg == 12 {
+                        if temp_reg == RESERVED_REG {
                             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                         }
                         write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
@@ -525,7 +526,7 @@ impl Arm64AssemblyEmitter {
                 }
                 "sdiv" | "mul" => {
                     let temp_reg = if pdst != 1 && psrc1 != 1 { 1 } else { 2 };
-                    if temp_reg == 12 {
+                    if temp_reg == RESERVED_REG {
                         return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
                     }
                     write_line(output, format_args!("    mov x{}, #{}\n", temp_reg, imm))?;
@@ -537,7 +538,7 @@ impl Arm64AssemblyEmitter {
             }
         } else {
             let psrc2 = allocator.ensure(src2, output)?;
-            if psrc2 == 12 {
+            if psrc2 == RESERVED_REG.into() {
                 return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
             }
             write_line(output,format_args!("    {} x{}, x{}, x{}\n", op, pdst, psrc1, psrc2))?;
@@ -563,7 +564,7 @@ impl Arm64AssemblyEmitter {
         let psrc2 = allocator.ensure(src2, output)?;
         let pdst = allocator.alloc(dst, output)?;
         // Never use x12 for computation
-        if psrc1 == 12 || psrc2 == 12 || pdst == 12 {
+        if psrc1 == RESERVED_REG.into() || psrc2 == RESERVED_REG.into() || pdst == RESERVED_REG.into() {
             return Err(Pl0Error::RegisterConstraintViolation("x12 cannot be used for computation".to_string()));
         }
         write_line(output, format_args!("    cmp x{}, x{}\n", psrc1, psrc2))?;
