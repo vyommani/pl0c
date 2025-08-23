@@ -29,6 +29,8 @@ pub mod arm64 {
     // Boolean values for assembly
     pub const ASM_TRUE: i32 = 1;
     pub const ASM_FALSE: i32 = 0;
+    pub const MAIN_WRAPPER: &'static str = ".section __TEXT,__text\n.global _start\n_start:\n    bl main\n    b .\n";
+    pub const EXIT_WRAPPER: &'static str = "    mov x0, #0\n    movz x16, #(0x2000001 & 0xFFFF)\n    movk x16, #((0x2000001 >> 16) & 0xFFFF), lsl #16\n    svc #0\n";
 }
 
 ///Register allocation constants

@@ -15,6 +15,8 @@ use std::{
     collections::HashSet,
 };
 use crate::config::register_allocation::RESERVED_REG;
+use crate::config::arm64::MAIN_WRAPPER;
+use crate::config::arm64::EXIT_WRAPPER;
 pub struct Arm64AssemblyEmitter;
 
 struct RuntimeNeeds {
@@ -483,11 +485,7 @@ impl Arm64AssemblyEmitter {
     }
 
     fn emit_footer(&self, output: &mut String, runtime_needs: RuntimeNeeds) -> Pl0Result<()> {
-        write_line(output, format_args!(".section __TEXT,__text\n"))?;
-        write_line(output, format_args!(".global _start\n"))?;
-        write_line(output, format_args!("_start:\n"))?;
-        write_line(output, format_args!("    bl main\n"))?;
-        write_line(output, format_args!("    b .\n"))?;
+        write_line(output, format_args!("{}", MAIN_WRAPPER))?;
         if runtime_needs.write_int {
             Arm64Runtime::emit_write_int_implementation(output)?;
         }
@@ -727,10 +725,7 @@ impl Arm64AssemblyEmitter {
     }
 
     fn emit_exit(&self, output: &mut String) -> Pl0Result<()> {
-        write_line(output, format_args!("    mov x0, #0\n"))?;
-        write_line(output,format_args!("    movz x16, #(0x2000001 & 0xFFFF)\n"))?;
-        write_line(output, format_args!("    movk x16, #((0x2000001 >> 16) & 0xFFFF), lsl #16\n"))?;
-        write_line(output, format_args!("    svc #0\n"))?;
+        write_line(output, format_args!("{}", EXIT_WRAPPER))?;
         Ok(())
     }
 
