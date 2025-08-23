@@ -108,6 +108,11 @@ impl RegisterName {
                 can_spill: false,
                 special_purpose: "Static link for nested procedures",
             },
+            RegisterName::None => RegisterConstraints {
+                can_allocate: false,
+                can_spill: false,
+                special_purpose: "Invalid register",
+            },
             _ => RegisterConstraints {
                 can_allocate: true,
                 can_spill: true,

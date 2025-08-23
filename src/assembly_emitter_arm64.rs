@@ -17,12 +17,50 @@ use std::{
 use crate::config::register_allocation::RESERVED_REG;
 pub struct Arm64AssemblyEmitter;
 
+struct RuntimeNeeds {
+    write_int: bool,
+    read_int: bool,
+    write_str: bool,
+}
+impl RuntimeNeeds {
+    fn new() -> Self {
+        Self {
+            write_int: false,
+            read_int: false,
+            write_str: false,
+        }
+    }
+}
+
+struct DataInfo {
+    variables: HashSet<String>,
+    constants: HashMap<String, String>,
+    runtime_needs: RuntimeNeeds,
+    strings: Vec<String>,
+}
+
+struct ProcContext {
+    in_proc: bool,
+    current_proc: Option<String>,
+    proc_stack: Vec<String>,
+}
+
+impl ProcContext {
+    fn new() -> Self {
+        Self {
+            in_proc: false,
+            current_proc: None,
+            proc_stack: Vec::new(),
+        }
+    }
+}
+
 impl AssemblyEmitter for Arm64AssemblyEmitter {
     fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         // Compute next uses of vregs
         self.compute_vreg_next_uses(ir, allocator)?;
         // Collect variables, constants, proc_output, and main_output
-        let (variables, constants, needs_write_int, needs_read_int) = Self::collect_data_info(ir);
+        let (variables, constants, runtime_needs) = Self::collect_data_info(ir);
         let mut data_output = String::new();
         Self::emit_data_section(&mut data_output, &variables, &constants)?;
         let mut proc_output = String::new();
@@ -32,7 +70,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         let new_main_output = Self::emit_main_section(&main_output, allocator, main_stack_size)?;
         // Assemble final output
         let mut footer = String::new();
-        self.emit_footer(&mut footer, needs_write_int, needs_read_int)?;
+        self.emit_footer(&mut footer, runtime_needs)?;
         let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
         output.push_str(&final_output);
         Ok(())
@@ -163,11 +201,10 @@ impl Arm64AssemblyEmitter {
     }
 
     // Helper to collect variables, constants, and flags
-    fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, bool, bool) {
+    fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, RuntimeNeeds) {
         let mut variables = HashSet::new();
         let mut constants = HashMap::new();
-        let mut needs_write_int = false;
-        let mut needs_read_int = false;
+        let mut runtime_needs = RuntimeNeeds::new();
         for line in ir {
             let line = line.trim();
             if line.starts_with("var ") {
@@ -180,12 +217,12 @@ impl Arm64AssemblyEmitter {
                     constants.insert(name.trim().to_string(), value.trim().to_string());
                 }
             } else if line.contains("write_int") {
-                needs_write_int = true;
+                runtime_needs.write_int = true;
             } else if line.contains("read_int") {
-                needs_read_int = true;
+                runtime_needs.read_int = true;
             }
         }
-        (variables, constants, needs_write_int, needs_read_int)
+        (variables, constants, runtime_needs)
     }
 
     // Helper to emit data section
@@ -386,16 +423,16 @@ impl Arm64AssemblyEmitter {
         })
     }
 
-    fn emit_footer(&self, output: &mut String, needs_write_int: bool, needs_read_int: bool) -> Pl0Result<()> {
+    fn emit_footer(&self, output: &mut String, runtime_needs: RuntimeNeeds) -> Pl0Result<()> {
         write_line(output, format_args!(".section __TEXT,__text\n"))?;
         write_line(output, format_args!(".global _start\n"))?;
         write_line(output, format_args!("_start:\n"))?;
         write_line(output, format_args!("    bl main\n"))?;
         write_line(output, format_args!("    b .\n"))?;
-        if needs_write_int {
+        if runtime_needs.write_int {
             Arm64Runtime::emit_write_int_implementation(output)?;
         }
-        if needs_read_int {
+        if runtime_needs.read_int {
             Arm64Runtime::emit_read_int_implementation(output)?;
         }
         Ok(())
