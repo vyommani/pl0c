@@ -4,6 +4,109 @@ use crate::register_allocator_arm64::Arm64RegisterAllocator;
 use crate::register_allocator_x86_64::X86_64RegisterAllocator;
 use crate::errors::Pl0Result;
 use std::any::Any;
+use std::collections::HashSet;
+use std::collections::HashMap;
+
+pub struct RuntimeNeeds {
+    pub write_int: bool,
+    pub read_int: bool,
+    pub write_str: bool,
+}
+impl RuntimeNeeds {
+    pub fn new() -> Self {
+        Self {
+            write_int: false,
+            read_int: false,
+            write_str: false,
+        }
+    }
+}
+
+struct DataInfo {
+    variables: HashSet<String>,
+    constants: HashMap<String, String>,
+    runtime_needs: RuntimeNeeds,
+    strings: Vec<String>,
+}
+
+pub enum ProcContext {
+    Main,
+    Procedure {
+        name: String,
+        stack: Vec<String>,
+        stack_sizes: Vec<usize>,
+    },
+}
+
+impl ProcContext {
+    pub fn new() -> Self {
+        ProcContext::Main
+    }
+
+    pub fn is_in_proc(&self) -> bool {
+        matches!(self, ProcContext::Procedure { .. })
+    }
+
+    pub fn current_proc(&self) -> Option<&str> {
+        match self {
+            ProcContext::Procedure { name, .. } => Some(name),
+            ProcContext::Main => None,
+        }
+    }
+
+    pub fn push_proc(&mut self, proc_name: String) {
+        match self {
+            ProcContext::Main => {
+                *self = ProcContext::Procedure {
+                    name: proc_name,
+                    stack: vec![],
+                    stack_sizes: vec![],
+                };
+            }
+            ProcContext::Procedure { name, stack, stack_sizes } => {
+                stack.push(name.clone());
+                *self = ProcContext::Procedure {
+                    name: proc_name,
+                    stack: stack.clone(),
+                    stack_sizes: stack_sizes.clone(),
+                };
+            }
+        }
+    }
+
+    pub fn pop_proc(&mut self) {
+        match self {
+            ProcContext::Procedure { stack, stack_sizes, .. } => {
+                if let Some(last) = stack.pop() {
+                    *self = ProcContext::Procedure {
+                        name: last,
+                        stack: stack.clone(),
+                        stack_sizes: stack_sizes.clone(),
+                    };
+                } else {
+                    *self = ProcContext::Main;
+                }
+            }
+            ProcContext::Main => {}
+        }
+    }
+
+    pub fn push_stack_size(&mut self, size: usize) {
+        match self {
+            ProcContext::Procedure { stack_sizes, .. } => {
+                stack_sizes.push(size);
+            }
+            ProcContext::Main => {}
+        }
+    }
+
+    pub fn pop_stack_size(&mut self) -> Option<usize> {
+        match self {
+            ProcContext::Procedure { stack_sizes, .. } => stack_sizes.pop(),
+            ProcContext::Main => None,
+        }
+    }
+}
 
 pub enum TargetArch {
     X86_64,
