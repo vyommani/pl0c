@@ -39,18 +39,81 @@ struct DataInfo {
     strings: Vec<String>,
 }
 
-struct ProcContext {
-    in_proc: bool,
-    current_proc: Option<String>,
-    proc_stack: Vec<String>,
+enum ProcContext {
+    Main,
+    Procedure {
+        name: String,
+        stack: Vec<String>,
+        stack_sizes: Vec<usize>,
+    },
 }
 
 impl ProcContext {
     fn new() -> Self {
-        Self {
-            in_proc: false,
-            current_proc: None,
-            proc_stack: Vec::new(),
+        ProcContext::Main
+    }
+
+    fn is_in_proc(&self) -> bool {
+        matches!(self, ProcContext::Procedure { .. })
+    }
+
+    fn current_proc(&self) -> Option<&str> {
+        match self {
+            ProcContext::Procedure { name, .. } => Some(name),
+            ProcContext::Main => None,
+        }
+    }
+
+    fn push_proc(&mut self, proc_name: String) {
+        match self {
+            ProcContext::Main => {
+                *self = ProcContext::Procedure {
+                    name: proc_name,
+                    stack: vec![],
+                    stack_sizes: vec![],
+                };
+            }
+            ProcContext::Procedure { name, stack, stack_sizes } => {
+                stack.push(name.clone());
+                *self = ProcContext::Procedure {
+                    name: proc_name,
+                    stack: stack.clone(),
+                    stack_sizes: stack_sizes.clone(),
+                };
+            }
+        }
+    }
+
+    fn pop_proc(&mut self) {
+        match self {
+            ProcContext::Procedure { stack, stack_sizes, .. } => {
+                if let Some(last) = stack.pop() {
+                    *self = ProcContext::Procedure {
+                        name: last,
+                        stack: stack.clone(),
+                        stack_sizes: stack_sizes.clone(),
+                    };
+                } else {
+                    *self = ProcContext::Main;
+                }
+            }
+            ProcContext::Main => {}
+        }
+    }
+
+    fn push_stack_size(&mut self, size: usize) {
+        match self {
+            ProcContext::Procedure { stack_sizes, .. } => {
+                stack_sizes.push(size);
+            }
+            ProcContext::Main => {}
+        }
+    }
+
+    fn pop_stack_size(&mut self) -> Option<usize> {
+        match self {
+            ProcContext::Procedure { stack_sizes, .. } => stack_sizes.pop(),
+            ProcContext::Main => None,
         }
     }
 }
@@ -259,25 +322,21 @@ impl Arm64AssemblyEmitter {
     }
 
     // Helper to process a label line
-    fn process_label(&self, line: &str, ir: &[String], i: usize, in_proc: &mut bool, current_proc: &mut Option<String>) -> (bool, Option<String>) {
+    fn process_label(&self, line: &str, ir: &[String], i: usize, context: &mut ProcContext) -> (bool, Option<String>) {
         let label = &line[..line.len() - 1];
         if line == "main:" {
-            *in_proc = false;
-            // Don't emit main: label here - emit_main_section handles it
-            return (*in_proc, None);
+            *context = ProcContext::Main;
+            return (false, None);
         } else if self.is_procedure_label(ir, i) {
-            *in_proc = true;
-            *current_proc = Some(label.to_string());
+            context.push_proc(label.to_string());
+            return (true, Some(format!("{}\n", line)));
         }
-        (*in_proc, Some(format!("{}\n", line)))
+        (context.is_in_proc(), Some(format!("{}\n", line)))
     }
 
     fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String, main_output: &mut String) -> Pl0Result<usize> {
         let mut main_stack_size: usize = 0;
-        let mut proc_stack_sizes: Vec<usize> = Vec::new();
-        let mut in_proc = false;
-        let mut current_proc: Option<String> = None;
-        let mut proc_stack: Vec<String> = Vec::new();
+        let mut context = ProcContext::new();
         let mut i = 0;
         while i < ir.len() {
             // Set instruction index for register allocator
@@ -295,7 +354,7 @@ impl Arm64AssemblyEmitter {
 
             // Handle labels
             if line.ends_with(':') {
-                let (in_proc_result, label) = self.process_label(line, ir, i, &mut in_proc, &mut current_proc);
+                let (in_proc_result, label) = self.process_label(line, ir, i, &mut context);
                 let output = if in_proc_result {
                     &mut *proc_output
                 } else {
@@ -315,19 +374,19 @@ impl Arm64AssemblyEmitter {
             let op = IROp::from_str(op_str);
 
             // Handle main proc_enter specially
-            if !in_proc && op == IROp::ProcEnter {
+            if !context.is_in_proc() && op == IROp::ProcEnter {
                 main_stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
                 i += 1;
                 continue;
             }
 
             // Emit instruction to appropriate output
-            let output = if in_proc {
+            let output = if context.is_in_proc() {
                 &mut *proc_output
             } else {
                 &mut *main_output
             };
-            self.emit_instruction_with_stack(op, op_str, &rest, i, allocator, output, &mut in_proc, &mut current_proc, &mut proc_stack, &mut proc_stack_sizes, line)?;
+            self.emit_instruction_with_stack(op, op_str, &rest, i, allocator, output, &mut context, line)?;
             i += 1;
         }
 
@@ -677,20 +736,8 @@ impl Arm64AssemblyEmitter {
 
     #[allow(clippy::too_many_arguments)]
     fn emit_instructions(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator,target_output: &mut String,
-        in_proc: &mut bool, current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, line: &str) -> Pl0Result<()> {
+        context: &mut ProcContext, line: &str) -> Pl0Result<()> {
         match op {
-            IROp::ProcEnter => {
-                *in_proc = true;
-                Arm64AssemblyEmitter::emit_prologue(target_output, allocator)?;
-            }
-            IROp::ProcExit => {
-                Arm64AssemblyEmitter::emit_epilogue(target_output, allocator)?;
-                proc_stack.pop();
-                if proc_stack.is_empty() {
-                    *in_proc = false;
-                    *current_proc = None;
-                }
-            }
             IROp::Exit => {
                 self.emit_exit(target_output)?;
             }
@@ -721,42 +768,38 @@ impl Arm64AssemblyEmitter {
             IROp::Unknown => {
                 write_line(target_output, format_args!("// Unhandled IR: {}\n", line))?
             }
+            IROp::ProcEnter | IROp::ProcExit => {
+                return Err(Pl0Error::CodeGenError { message: format!("{} should be handled by emit_instruction_with_stack", op_str), line: None});
+            }
         }
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn emit_instruction_with_stack(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, target_output: &mut String, in_proc: &mut bool,
-        current_proc: &mut Option<String>, proc_stack: &mut Vec<String>, proc_stack_sizes: &mut Vec<usize>, line: &str) -> Pl0Result<()> {
+    fn emit_instruction_with_stack(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator,
+        target_output: &mut String, context: &mut ProcContext, line: &str) -> Pl0Result<()> {
         match op {
             IROp::ProcEnter => {
-                *in_proc = true;
-                if let Some(proc_name) = current_proc.clone() {
-                    proc_stack.push(proc_name);
+                if !context.is_in_proc() {
+                    return Err(Pl0Error::CodeGenError { message: "proc_enter outside a procedure context".to_string(), line: None});
                 }
                 let stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
                 let aligned_stack_size = Self::align_stack_size(stack_size);
-                proc_stack_sizes.push(aligned_stack_size);
+                context.push_stack_size(aligned_stack_size);
                 Arm64AssemblyEmitter::emit_prologue(target_output, allocator)?;
                 if aligned_stack_size > 0 {
                     write_line(target_output, format_args!("    sub sp, sp, #{}\n", aligned_stack_size))?;
                 }
             }
             IROp::ProcExit => {
-                let stack_size = proc_stack_sizes.pop().unwrap_or(0);
+                let stack_size = context.pop_stack_size().unwrap_or(0);
                 if stack_size > 0 {
                     write_line(target_output, format_args!("    add sp, sp, #{}\n", stack_size))?;
                 }
                 Arm64AssemblyEmitter::emit_epilogue(target_output, allocator)?;
-                proc_stack.pop();
-                if proc_stack.is_empty() {
-                    *in_proc = false;
-                    *current_proc = None;
-                } else {
-                    *current_proc = Some(proc_stack.last().unwrap().clone());
-                }
+               context.pop_proc();
             }
-            _ => self.emit_instructions(op, op_str, rest, idx, allocator, target_output, in_proc, current_proc, proc_stack, line)?,
+            _ => self.emit_instructions(op, op_str, rest, idx, allocator, target_output, context, line)?,
         }
         Ok(())
     }
