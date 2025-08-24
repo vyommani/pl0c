@@ -19,16 +19,15 @@ use crate::config::arm64::MAIN_WRAPPER;
 use crate::config::arm64::EXIT_WRAPPER;
 use crate::assembly_generator::RuntimeNeeds;
 use crate::assembly_generator::ProcContext;
+use crate::assembly_generator::DataInfo;
+use crate::assembly_generator::TargetArch;
 pub struct Arm64AssemblyEmitter;
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {
     fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
-        // Compute next uses of vregs
-        self.compute_vreg_next_uses(ir, allocator)?;
-        // Collect variables, constants, proc_output, and main_output
-        let (variables, constants, runtime_needs) = Self::collect_data_info(ir);
         let mut data_output = String::new();
-        Self::emit_data_section(&mut data_output, &variables, &constants)?;
+        let data_info = DataInfo::from_ir(ir)?;
+        data_info.emit_data_section(&mut data_output, TargetArch::ARM64)?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
         let main_stack_size = self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output)?;
@@ -36,7 +35,7 @@ impl AssemblyEmitter for Arm64AssemblyEmitter {
         let new_main_output = Self::emit_main_section(&main_output, allocator, main_stack_size)?;
         // Assemble final output
         let mut footer = String::new();
-        self.emit_footer(&mut footer, runtime_needs)?;
+        self.emit_footer(&mut footer, data_info.runtime_needs())?;
         let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
         output.push_str(&final_output);
         Ok(())
@@ -162,45 +161,6 @@ impl Arm64AssemblyEmitter {
                     dst_reg
                 ),
             )?;
-        }
-        Ok(())
-    }
-
-    // Helper to collect variables, constants, and flags
-    fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, RuntimeNeeds) {
-        let mut variables = HashSet::new();
-        let mut constants = HashMap::new();
-        let mut runtime_needs = RuntimeNeeds::new();
-        for line in ir {
-            let line = line.trim();
-            if line.starts_with("var ") {
-                let vars = line[4..].split(',').map(|v| v.trim()).filter(|v| !v.is_empty());
-                for v in vars {
-                    variables.insert(v.to_string());
-                }
-            } else if line.starts_with("const ") {
-                if let Some((name, value)) = line[6..].split_once('=') {
-                    constants.insert(name.trim().to_string(), value.trim().to_string());
-                }
-            } else if line.contains("write_int") {
-                runtime_needs.write_int = true;
-            } else if line.contains("read_int") {
-                runtime_needs.read_int = true;
-            }
-        }
-        (variables, constants, runtime_needs)
-    }
-
-    // Helper to emit data section
-    fn emit_data_section(data_output: &mut String, variables: &HashSet<String>, constants: &HashMap<String, String>) -> Pl0Result<()> {
-        for (name, value) in constants {
-            write_line(data_output, format_args!(".equ {}, {}\n", name, value))?;
-        }
-        write_line(data_output, format_args!(".section __DATA,__bss\n"))?;
-        write_line(data_output, format_args!(".align 3\n"))?;
-        for v in variables {
-            write_line(data_output, format_args!("{}:\n", v))?;
-            write_line(data_output, format_args!("    .skip 8\n"))?;
         }
         Ok(())
     }
@@ -385,7 +345,7 @@ impl Arm64AssemblyEmitter {
         })
     }
 
-    fn emit_footer(&self, output: &mut String, runtime_needs: RuntimeNeeds) -> Pl0Result<()> {
+    fn emit_footer(&self, output: &mut String, runtime_needs: &RuntimeNeeds) -> Pl0Result<()> {
         write_line(output, format_args!("{}", MAIN_WRAPPER))?;
         if runtime_needs.write_int {
             Arm64Runtime::emit_write_int_implementation(output)?;

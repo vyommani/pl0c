@@ -2,10 +2,12 @@ use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
 use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
 use crate::register_allocator_arm64::Arm64RegisterAllocator;
 use crate::register_allocator_x86_64::X86_64RegisterAllocator;
+use crate::utils::string_utils::write_line;
 use crate::errors::Pl0Result;
+use crate::errors::Pl0Error;
 use std::any::Any;
-use std::collections::HashSet;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use regex::Regex;
 
 pub struct RuntimeNeeds {
     pub write_int: bool,
@@ -22,11 +24,93 @@ impl RuntimeNeeds {
     }
 }
 
-struct DataInfo {
-    variables: HashSet<String>,
-    constants: HashMap<String, String>,
-    runtime_needs: RuntimeNeeds,
-    strings: Vec<String>,
+pub struct DataInfo {
+    pub variables: HashSet<String>,
+    pub constants: HashMap<String, String>,
+    pub runtime_needs: RuntimeNeeds,
+    pub strings: Vec<String>,
+}
+
+impl DataInfo {
+    pub fn new() -> Self {
+        Self {
+            variables: HashSet::new(),
+            constants: HashMap::new(),
+            runtime_needs: RuntimeNeeds::new(),
+            strings: Vec::new(),
+        }
+    }
+
+    pub fn from_ir(ir: &[String]) -> Pl0Result<Self> {
+        let mut data_info = Self::new();
+        let const_regex = Regex::new(r"const\s+([^=]+)=(.+)").map_err(|e| Pl0Error::CodeGenError {
+            message: format!("Invalid const regex: {}", e),
+            line: None,
+        })?;
+
+        for line in ir {
+            let line = line.trim();
+            if line.starts_with("var ") {
+                let vars = line[4..].split(',').map(|v| v.trim()).filter(|v| !v.is_empty());
+                for v in vars {
+                    data_info.variables.insert(v.to_string());
+                }
+            } else if line.starts_with("const ") {
+                if let Some(captures) = const_regex.captures(line) {
+                    let name = captures.get(1).map_or("", |m| m.as_str()).trim();
+                    let value = captures.get(2).map_or("", |m| m.as_str()).trim();
+                    if name.is_empty() || value.is_empty() {
+                        return Err(Pl0Error::CodeGenError {
+                            message: "Invalid const format".to_string(),line: None});
+                    }
+                    data_info.constants.insert(name.to_string(), value.to_string());
+                } else {
+                    return Err(Pl0Error::CodeGenError {message: "Invalid const syntax".to_string(), line: None});
+                }
+            } else if line.contains("write_int") {
+                data_info.runtime_needs.write_int = true;
+            } else if line.contains("read_int") {
+                data_info.runtime_needs.read_int = true;
+            } else if line.contains("write_str") {
+                data_info.runtime_needs.write_str = true;
+            }
+        }
+        Ok(data_info)
+    }
+
+    pub fn emit_data_section(&self, output: &mut String, target: TargetArch) -> Pl0Result<()> {
+        match target {
+            TargetArch::ARM64 => {
+                for (name, value) in &self.constants {
+                    write_line(output, format_args!(".equ {}, {}\n", name, value))?;
+                }
+                if !self.variables.is_empty() {
+                    write_line(output, format_args!(".section __DATA,__bss\n"))?;
+                    write_line(output, format_args!(".align 3\n"))?;
+                    for v in &self.variables {
+                        write_line(output, format_args!("{}:\n", v))?;
+                        write_line(output, format_args!("    .skip 8\n"))?;
+                    }
+                }
+            }
+            TargetArch::X86_64 => {
+                if !self.constants.is_empty() || !self.variables.is_empty() {
+                    write_line(output, format_args!(".section .data\n"))?;
+                    for (name, value) in &self.constants {
+                        write_line(output, format_args!("{}:\t.quad {}\n", name, value))?;
+                    }
+                    for v in &self.variables {
+                        write_line(output, format_args!("{}:\t.quad 0\n", v))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn runtime_needs(&self) -> &RuntimeNeeds {
+        &self.runtime_needs
+    }
 }
 
 pub enum ProcContext {
