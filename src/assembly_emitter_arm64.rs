@@ -105,15 +105,7 @@ impl Arm64AssemblyEmitter {
     fn emit_load_store_address(&self, output: &mut String, dst_reg: usize, src_or_dst: &str, is_load: bool) -> Pl0Result<()> {
         if src_or_dst.starts_with("bp-") {
             let offset = src_or_dst[3..].parse::<i32>().unwrap_or(0);
-            write_line(
-                output,
-                format_args!(
-                    "    {} x{}, [x29, #{}]\n",
-                    if is_load { "ldr" } else { "str" },
-                    dst_reg,
-                    -offset
-                ),
-            )?;
+            write_line(output, format_args!("    {} x{}, [x29, #{}]\n", if is_load { "ldr" } else { "str" }, dst_reg, -offset),)?;
         } else if src_or_dst.starts_with("up-") {
             let parts: Vec<&str> = src_or_dst[3..].split('-').collect();
             if parts.len() != 2 {
@@ -125,42 +117,15 @@ impl Arm64AssemblyEmitter {
                 let temp_reg = 10; // x10: caller-saved, unused by v0–v8 in IR
                 write_line(output, format_args!("    mov x{}, x29\n", temp_reg))?;
                 for _ in 0..distance {
-                    write_line(
-                        output,
-                        format_args!("    ldr x{}, [x{}, #-8]\n", temp_reg, temp_reg),
-                    )?;
+                    write_line(output, format_args!("    ldr x{}, [x{}, #-8]\n", temp_reg, temp_reg),)?;
                 }
-                write_line(
-                    output,
-                    format_args!(
-                        "    {} x{}, [x{}, #{}]\n",
-                        if is_load { "ldr" } else { "str" },
-                        dst_reg,
-                        temp_reg,
-                        -offset
-                    ),
-                )?;
+                write_line(output,format_args!("    {} x{}, [x{}, #{}]\n", if is_load { "ldr" } else { "str" }, dst_reg, temp_reg, -offset),)?;
             } else {
-                write_line(
-                    output,
-                    format_args!(
-                        "    {} x{}, [x29, #{}]\n",
-                        if is_load { "ldr" } else { "str" },
-                        dst_reg,
-                        -offset
-                    ),
-                )?;
+                write_line(output, format_args!("    {} x{}, [x29, #{}]\n", if is_load { "ldr" } else { "str" }, dst_reg, -offset),)?;
             }
         } else {
             self.emit_var_addr(output, RESERVED_REG, src_or_dst)?;
-            write_line(
-                output,
-                format_args!(
-                    "    {} x{}, [x12]\n",
-                    if is_load { "ldr" } else { "str" },
-                    dst_reg
-                ),
-            )?;
+            write_line(output, format_args!("    {} x{}, [x12]\n", if is_load { "ldr" } else { "str" }, dst_reg),)?;
         }
         Ok(())
     }
@@ -206,15 +171,12 @@ impl Arm64AssemblyEmitter {
             if let Some(alloc) = allocator.as_any_mut().downcast_mut::<Arm64RegisterAllocator>() {
                 alloc.set_instruction_index(i as i32);
             }
-
             let line = ir[i].trim();
-
             // Skip empty lines, comments, and declarations
             if Self::should_skip_line(line) {
                 i += 1;
                 continue;
             }
-
             // Handle labels
             if line.ends_with(':') {
                 let (in_proc_result, label) = self.process_label(line, ir, i, &mut context);
@@ -229,20 +191,17 @@ impl Arm64AssemblyEmitter {
                 i += 1;
                 continue;
             }
-
             // Parse instruction
             let mut parts = line.split_whitespace();
             let op_str = parts.next().unwrap_or("");
             let rest: Vec<&str> = parts.collect();
             let op = IROp::from_str(op_str);
-
             // Handle main proc_enter specially
             if !context.is_in_proc() && op == IROp::ProcEnter {
                 main_stack_size = rest.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
                 i += 1;
                 continue;
             }
-
             // Emit instruction to appropriate output
             let output = if context.is_in_proc() {
                 &mut *proc_output
@@ -252,7 +211,6 @@ impl Arm64AssemblyEmitter {
             self.emit_instruction_with_stack(op, op_str, &rest, i, allocator, output, &mut context, line)?;
             i += 1;
         }
-
         Ok(main_stack_size)
     }
 
@@ -320,7 +278,6 @@ impl Arm64AssemblyEmitter {
                 let aligned_spill_space = ((spill_space + 15) / 16) * 16;
                 write_line(output, format_args!("    add sp, sp, #{}\n", aligned_spill_space))?;
             }
-
             let mut regs: Vec<_> = alloc.get_used_callee_saved().iter().copied().collect();
             regs.sort_by(|a, b| b.cmp(a));
             // Restore each register in reverse order
@@ -447,10 +404,8 @@ impl Arm64AssemblyEmitter {
             }
             return Ok(());
         }
-
         let psrc1 = allocator.ensure(src1, output)?;
         self.validate_register(psrc1, "x12 cannot be used for computation")?;
-
         // Reuse psrc1 for dst if temporary and dead
         let pdst = if dst == src1
             || (self.is_dead_after(dst, idx, allocator)
@@ -463,7 +418,6 @@ impl Arm64AssemblyEmitter {
             allocator.alloc(dst, output)?
         };
         self.validate_register(pdst, "x12 cannot be used for computation")?;
-
         if let Ok(imm) = src2.parse::<i64>() {
             match op {
                 "add" | "sub" => {
@@ -500,7 +454,6 @@ impl Arm64AssemblyEmitter {
                 allocator.free(psrc2);
             }
         }
-
         if self.is_dead_after(src1, idx, allocator) && dst != src1 {
             allocator.free(psrc1);
         }
@@ -664,19 +617,15 @@ impl Arm64AssemblyEmitter {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src1 = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let src2 = rest.get(2).unwrap_or(&"").trim_end_matches(',');
-
         let psrc1 = allocator.ensure(src1, output)?;
         let psrc2 = allocator.ensure(src2, output)?;
         let pdst = allocator.alloc(dst, output)?;
-
         // Use a temp register for the quotient (let's use x11, but ensure it's not used for vregs)
         let temp = 11usize;
-
         // sdiv x11, x<src1>, x<src2>
         write_line(output, format_args!("    sdiv x{}, x{}, x{}\n", temp, psrc1, psrc2))?;
         // msub x<dst>, x11, x<src2>, x<src1>  ; x<dst> = x<src1> - (x11 * x<src2>)
         write_line(output, format_args!("    msub x{}, x{}, x{}, x{}\n", pdst, temp, psrc2, psrc1))?;
-
         if self.is_dead_after(src1, idx, allocator) {
             allocator.free(psrc1);
         }
