@@ -21,9 +21,9 @@ const INITIAL_STACK_OFFSET: isize = 16;
 pub struct IRGenerator {
     label_counter: i32,
     vreg_counter: i32,
-    data_output: String,
-    bss_output: String,
-    text_output: String,
+    constants: String,
+    variables: String,
+    code: String,
     vreg_prefix: String,
     symbol_table: SymbolTable,
     exit_emitted: bool,
@@ -43,9 +43,9 @@ impl IRGenerator {
             symbol_table: table,
             label_counter: 0,
             vreg_counter: 0,
-            data_output: String::with_capacity(1024),
-            bss_output: String::with_capacity(256),
-            text_output: String::with_capacity(4096),
+            constants: String::with_capacity(1024),
+            variables: String::with_capacity(256),
+            code: String::with_capacity(4096),
             vreg_prefix: "v".to_string(),
             exit_emitted: false,
             main_emitted: false,
@@ -76,24 +76,24 @@ impl IRGenerator {
     // ---------------------------
     pub fn get_output(&self) -> String {
         let mut output = String::with_capacity(
-            self.data_output.len() + self.bss_output.len() + self.text_output.len() + 10
+            self.constants.len() + self.variables.len() + self.code.len() + 10
         );
         // Add constants as IR data declarations
-        if !self.data_output.is_empty() {
-            output.push_str(&self.data_output);
-            if !self.data_output.ends_with('\n') {
+        if !self.constants.is_empty() {
+            output.push_str(&self.constants);
+            if !self.constants.ends_with('\n') {
                 output.push('\n');
             }
         }
         // Add global variables as IR data declarations
-        if !self.bss_output.is_empty() {
-            output.push_str(&self.bss_output);
-            if !self.bss_output.ends_with('\n') {
+        if !self.variables.is_empty() {
+            output.push_str(&self.variables);
+            if !self.variables.ends_with('\n') {
                 output.push('\n');
             }
         }
         // Add the main IR code
-        output.push_str(&self.text_output);
+        output.push_str(&self.code);
         output
     }
 
@@ -117,7 +117,7 @@ impl IRGenerator {
     }
 
     fn system_exit(&mut self, code: i32) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_exit(code)
     }
 
@@ -169,7 +169,7 @@ impl IRGenerator {
     // IR Emission Helpers
     // ---------------------------
     fn emit_load_from_symbol(&mut self, symbol: &Symbol, target_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         let distance = self.current_scope_level.saturating_sub(symbol.level);
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
@@ -186,7 +186,7 @@ impl IRGenerator {
     }
 
     fn emit_store_to_symbol(&mut self, symbol: &Symbol, source_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         let distance = self.current_scope_level.saturating_sub(symbol.level);
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
@@ -226,7 +226,7 @@ impl IRGenerator {
             // Now emit the initialization code
             for offset in var_offsets {
                 let zero_reg = self.allocate_virtual_register();
-                let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+                let mut emitter = StringCodeEmitter::new(&mut self.code);
                 emitter.emit_li(&zero_reg, "0")?;
                 emitter.emit_st(&format!("bp-{}", offset), &zero_reg)?;
             }
@@ -238,7 +238,7 @@ impl IRGenerator {
     // Binary and Relational Operations
     // ---------------------------
     fn emit_binary_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         match op {
             "add" => emitter.emit_add(dest, left, right),
             "sub" => emitter.emit_sub(dest, left, right),
@@ -250,7 +250,7 @@ impl IRGenerator {
     }
 
     fn emit_relational_op(&mut self, op: &str, dest: &str, left: &str, right: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         match op {
             "cmp_gt" => emitter.emit_cmp_gt(dest, left, right),
             "cmp_lt" => emitter.emit_cmp_lt(dest, left, right),
@@ -266,17 +266,17 @@ impl IRGenerator {
     // Control Flow Helpers
     // ---------------------------
     fn emit_branch_if_zero(&mut self, vreg: &str, label: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_beqz(vreg, label)
     }
 
     fn emit_jump(&mut self, label: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_jump(label)
     }
 
     fn emit_label(&mut self, label: &str) -> Pl0Result<()> {
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_label(label)
     }
 
@@ -303,7 +303,7 @@ impl IRGenerator {
     fn emit_read_operation(&mut self, operation: &str, identifier: &str) -> Pl0Result<()> {
         let symbol = self.get_variable_symbol(identifier, "variable in read")?.clone();
         let vreg = self.allocate_virtual_register();
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         match operation {
             "read_int" => emitter.emit_read_int(&vreg)?,
             "read_char" => emitter.emit_read_char(&vreg)?,
@@ -323,7 +323,7 @@ impl IRGenerator {
             SymbolLocation::None => identifier.to_string(),
             _ => return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", identifier))),
         };
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_call(&label)
     }
 
@@ -387,14 +387,14 @@ impl IRGenerator {
         }
         let stack_size = Self::calculate_stack_size(stack_slots);
         // Emit procedure prologue
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_proc_enter(stack_size)?;
         // Process procedure body
         if let Some(proc_block) = proc_block {
             proc_block.accept(self)?;
         }
         // Emit procedure epilogue
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_proc_exit()?;
         // Restore state
         self.current_scope_level = original_scope;
@@ -440,7 +440,7 @@ impl ASTVisitor for IRGenerator {
         match symbol.symbol_type {
             SymbolType::Constant(value) => {
                 let vreg = self.allocate_virtual_register();
-                let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+                let mut emitter = StringCodeEmitter::new(&mut self.code);
                 emitter.emit_li(&vreg, &value.to_string())?;
                 Ok(vreg)
             }
@@ -448,7 +448,7 @@ impl ASTVisitor for IRGenerator {
                 let vreg = self.allocate_virtual_register();
                 match &symbol.location {
                     SymbolLocation::GlobalLabel(label) => {
-                        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+                        let mut emitter = StringCodeEmitter::new(&mut self.code);
                         emitter.emit(&format!("la {}, {}", vreg, label))?;
                     }
                     _ => return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", ident.value))),
@@ -472,7 +472,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_number(&mut self, number: &Number) -> Pl0Result<String> {
         let vreg = self.allocate_virtual_register();
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_li(&vreg, &number.value.to_string())?;
         Ok(vreg)
     }
@@ -504,7 +504,7 @@ impl ASTVisitor for IRGenerator {
         let expr = cond.expr.as_ref().ok_or_else(|| Pl0Error::codegen_error("OddCondition missing expression"))?;
         let num_reg = self.emit_expression(expr.as_ref())?;
         let result_reg = self.allocate_virtual_register();
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_is_odd(&result_reg, &num_reg)?;
         Ok(result_reg)
     }
@@ -560,7 +560,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_write_int(&mut self, stmt: &Write) -> Pl0Result<()> {
         let expr = stmt.expr.as_ref().ok_or_else(|| Pl0Error::codegen_error("Write statement missing expression"))?;
         let vreg = self.emit_expression(expr.as_ref())?;
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_write_int(&vreg)
     }
 
@@ -568,7 +568,7 @@ impl ASTVisitor for IRGenerator {
         if stmt.expr.is_empty() {
             return Err(Pl0Error::codegen_error("WriteStr statement missing expression"));
         }
-        let mut emitter = StringCodeEmitter::new(&mut self.text_output);
+        let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_write_str(&stmt.expr)
     }
 
@@ -583,7 +583,7 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_const(&mut self, expr: &ConstDecl) -> Pl0Result<()> {
         for (id, num) in &expr.const_decl {
-            let mut emitter = StringCodeEmitter::new(&mut self.data_output);
+            let mut emitter = StringCodeEmitter::new(&mut self.constants);
             emitter.emit_const(id, &num.to_string())?;
             self.update_symbol_location(id, SymbolLocation::Immediate(*num), true);
         }
@@ -599,7 +599,7 @@ impl ASTVisitor for IRGenerator {
                 self.update_symbol_location(var_name, SymbolLocation::StackOffset(offset), false);
             } else {
                 // Global variable
-                let mut emitter = StringCodeEmitter::new(&mut self.bss_output);
+                let mut emitter = StringCodeEmitter::new(&mut self.variables);
                 emitter.emit_var(var_name)?;
                 self.update_symbol_location(var_name, SymbolLocation::GlobalLabel(var_name.clone()), true);
             }
