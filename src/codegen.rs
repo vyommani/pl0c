@@ -484,6 +484,41 @@ impl ASTVisitor for IRGenerator {
     fn visit_binary_operation(&mut self, binop: &BinOp) -> Pl0Result<String> {
         let left_expr = binop.left.as_ref().ok_or_else(|| Pl0Error::codegen_error("Binary operation missing left operand"))?;
         let right_expr = binop.right.as_ref().ok_or_else(|| Pl0Error::codegen_error("Binary operation missing right operand"))?;
+        // Check for constant operands (Number or Ident with Constant)
+        let left_val = if let Some(num) = left_expr.as_any().downcast_ref::<Number>() {
+            Some(num.value)
+        } else if let Some(ident) = left_expr.as_any().downcast_ref::<Ident>() {
+            self.symbol_table.get(&ident.value).and_then(|s| match s.symbol_type {
+                SymbolType::Constant(val) => Some(val),
+                _ => None,
+            })
+        } else {
+            None
+        };
+        let right_val = if let Some(num) = right_expr.as_any().downcast_ref::<Number>() {
+            Some(num.value)
+        } else if let Some(ident) = right_expr.as_any().downcast_ref::<Ident>() {
+            self.symbol_table.get(&ident.value).and_then(|s| match s.symbol_type {
+                SymbolType::Constant(val) => Some(val),
+                _ => None,
+            })
+        } else {
+            None
+        };
+        if let (Some(left), Some(right)) = (left_val, right_val) {
+            let result = match binop.operator.as_str() {
+                "Plus" => left + right,
+                "Minus" => left - right,
+                "Multiply" => left * right,
+                "Divide" => left / right,
+                "Modulo" => left % right,
+                _ => return Err(Pl0Error::codegen_error(format!("Unknown operator: {}", binop.operator))),
+            };
+            let vreg = self.allocate_virtual_register();
+            let mut emitter = StringCodeEmitter::new(&mut self.code);
+            emitter.emit_li(&vreg, &result.to_string())?;
+            return Ok(vreg);
+        }
         self.emit_binary_operation(left_expr.as_ref(), right_expr.as_ref(), &binop.operator)
     }
 
