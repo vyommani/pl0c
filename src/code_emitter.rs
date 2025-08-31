@@ -1,4 +1,3 @@
-// src/code_emitter.rs
 use crate::register_allocator_arm64::RegisterName;
 use crate::Pl0Result;
 
@@ -40,18 +39,8 @@ pub trait CodeEmitter {
     fn emit_ldr(&mut self, reg: &RegisterName, offset: i32) -> Pl0Result<()>;
     fn emit_stp(&mut self, reg: &RegisterName) -> Pl0Result<()>;
     fn emit_mov(&mut self, dest: &RegisterName, src: &RegisterName) -> Pl0Result<()>;
-    fn emit_add_asm(
-        &mut self,
-        dest: &RegisterName,
-        src1: &RegisterName,
-        src2: &RegisterName,
-    ) -> Pl0Result<()>;
-    fn emit_sub_asm(
-        &mut self,
-        dest: &RegisterName,
-        src1: &RegisterName,
-        src2: &RegisterName,
-    ) -> Pl0Result<()>;
+    fn emit_add_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Pl0Result<()>;
+    fn emit_sub_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Pl0Result<()>;
     fn emit_ret(&mut self) -> Pl0Result<()>;
     fn emit_bl(&mut self, label: &str) -> Pl0Result<()>;
     fn emit_b(&mut self, label: &str) -> Pl0Result<()>;
@@ -205,21 +194,11 @@ impl<'a> CodeEmitter for StringCodeEmitter<'a> {
         self.emit(&format!("mov {}, {}", dest, src))
     }
 
-    fn emit_add_asm(
-        &mut self,
-        dest: &RegisterName,
-        src1: &RegisterName,
-        src2: &RegisterName,
-    ) -> Pl0Result<()> {
+    fn emit_add_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Pl0Result<()> {
         self.emit(&format!("add {}, {}, {}", dest, src1, src2))
     }
 
-    fn emit_sub_asm(
-        &mut self,
-        dest: &RegisterName,
-        src1: &RegisterName,
-        src2: &RegisterName,
-    ) -> Pl0Result<()> {
+    fn emit_sub_asm(&mut self, dest: &RegisterName, src1: &RegisterName, src2: &RegisterName) -> Pl0Result<()> {
         self.emit(&format!("sub {}, {}, {}", dest, src1, src2))
     }
 

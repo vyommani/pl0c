@@ -13,6 +13,10 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
 use crate::runtime_x86_64::X86_64Runtime;
+use crate::assembly_generator::RuntimeNeeds;
+use crate::assembly_generator::ProcContext;
+use crate::assembly_generator::DataInfo;
+use crate::assembly_generator::TargetArch;
 pub struct X86_64AssemblyEmitter;
 
 struct StackAnalyzer {
@@ -99,16 +103,16 @@ impl StackAnalyzer {
 
 impl AssemblyEmitter for X86_64AssemblyEmitter {
     fn emit(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
-        let (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings) = Self::collect_data_info(ir);
         let mut data_output = String::new();
-        Self::emit_data_section(&mut data_output, &variables, &constants, &strings, needs_write_int, needs_write_str)?;
+        let data_info = DataInfo::from_ir(ir)?;
+        data_info.emit_data_section(&mut data_output, TargetArch::X86_64)?;
         let mut proc_output = String::new();
         let mut main_output = String::new();
         let stack_analyzer = StackAnalyzer::new(ir, allocator);
-        self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output, &stack_analyzer, &constants, &strings)?;
+        self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output, &stack_analyzer, &data_info)?;
         let new_main_output = Self::emit_main_section(&main_output, &stack_analyzer)?;
         let mut footer = String::new();
-        self.emit_footer_conditional(&mut footer, needs_write_int, needs_read_int, needs_write_str)?;
+        self.emit_footer_conditional(&mut footer, &data_info.runtime_needs)?;
         let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
         output.push_str(&final_output);
         Ok(())
@@ -145,14 +149,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
 }
 
 impl X86_64AssemblyEmitter {
-    fn collect_data_info(ir: &[String]) -> (
-        HashSet<String>,
-        HashMap<String, String>,
-        bool,
-        bool,
-        bool,
-        Vec<String>,
-    ) {
+    fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, bool, bool, bool, Vec<String>) {
         // Optimization: Only include used variables
         let mut variables = HashSet::new();
         let mut constants = HashMap::new();
@@ -228,7 +225,7 @@ impl X86_64AssemblyEmitter {
     }
 
     fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String,
-        main_output: &mut String, stack_analyzer: &StackAnalyzer, constants: &HashMap<String, String>, strings: &[String]) -> Pl0Result<()> {
+        main_output: &mut String, stack_analyzer: &StackAnalyzer, data_info: &DataInfo) -> Pl0Result<()> {
         let mut in_proc = false;
         let mut current_proc = None;
         let mut proc_stack = Vec::new();
@@ -265,16 +262,16 @@ impl X86_64AssemblyEmitter {
             let op = IROp::from_str(op_str);
             if op == IROp::ProcExit {
                 self.emit_ir_instruction_x86_64( op, op_str, &rest, idx, allocator,if in_proc { proc_output } else { main_output },
-                    &mut in_proc, &mut false, line, stack_analyzer, constants, strings)?;
+                    &mut in_proc, &mut false, line, stack_analyzer, data_info)?;
                 in_proc = false; // Explicitly reset in_proc after proc_exit
                 continue;
             }
             if in_proc {
                 self.emit_ir_instruction_x86_64( op, op_str, &rest, idx, allocator, proc_output, &mut in_proc, &mut false, line,
-                    stack_analyzer, constants, strings)?;
+                    stack_analyzer, data_info)?;
             } else {
                 self.emit_ir_instruction_x86_64(op, op_str, &rest, idx, allocator, main_output, &mut in_proc, &mut false, line,
-                    stack_analyzer, constants, strings)?;
+                    stack_analyzer, data_info)?;
             }
         }
         Ok(())
@@ -316,7 +313,7 @@ impl X86_64AssemblyEmitter {
     }
 
     fn emit_ir_instruction_x86_64(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator,
-        output: &mut String, in_proc: &mut bool, _is_main: &mut bool, line: &str, stack_analyzer: &StackAnalyzer, constants: &HashMap<String, String>, strings: &[String]) -> Pl0Result<()> {
+        output: &mut String, in_proc: &mut bool, _is_main: &mut bool, line: &str, stack_analyzer: &StackAnalyzer, data_info: &DataInfo) -> Pl0Result<()> {
         match op {
             IROp::ProcEnter => {
                 *in_proc = true;
@@ -331,9 +328,9 @@ impl X86_64AssemblyEmitter {
                 *in_proc = false;
             }
             IROp::Exit => {let _ = self.emit_exit(output);}
-            IROp::Li => self.emit_li(rest, idx, allocator, output, constants)?,
-            IROp::Ld => self.emit_ld(rest, idx, allocator, output, constants)?,
-            IROp::St => self.emit_st(rest, idx, allocator, output, constants)?,
+            IROp::Li => self.emit_li(rest, idx, allocator, output, &data_info.constants)?,
+            IROp::Ld => self.emit_ld(rest, idx, allocator, output, &data_info.constants)?,
+            IROp::St => self.emit_st(rest, idx, allocator, output, &data_info.constants)?,
             IROp::Add | IROp::Sub | IROp::Mul => {
                 self.emit_binop(op_str, rest, idx, allocator, output)?
             }
@@ -360,7 +357,7 @@ impl X86_64AssemblyEmitter {
             }
             IROp::WriteStr => {
                 let src = line[10..].trim_matches(|c| c == '"' || c == '\'');
-                X86_64Runtime::emit_write_str_x86_64(src, idx, allocator, output, strings)?;
+                X86_64Runtime::emit_write_str_x86_64(src, idx, allocator, output, data_info.strings.as_slice())?;
             }
             IROp::Unknown => {
                 output.push_str(&format!("; Unhandled IR: {}\n", line));
@@ -405,14 +402,14 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_footer_conditional(&self, output: &mut String, needs_write_int: bool, needs_read_int: bool, needs_write_str: bool) -> Pl0Result<()> {
-        if needs_write_int {
+    fn emit_footer_conditional(&self, output: &mut String, runtime_needs: &RuntimeNeeds) -> Pl0Result<()> {
+        if runtime_needs.write_int {
             X86_64Runtime::emit_write_int_routine(output)?;
         }
-        if needs_read_int {
+        if runtime_needs.read_int {
             X86_64Runtime::emit_read_int_routine(output)?;
         }
-        if needs_write_str {
+        if runtime_needs.write_str {
             X86_64Runtime::emit_write_str_routine(output)?;
         }
         Ok(())

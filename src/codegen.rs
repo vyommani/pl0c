@@ -428,6 +428,23 @@ impl IRGenerator {
         self.procedures_emitted = true;
         Ok(())
     }
+
+    fn fold_constant_expression(&mut self, expr: &Box<dyn ExpressionNode>) -> Option<i64> {
+        let expr = expr.as_ref();
+        // Handle Number nodes
+        if let Some(num) = expr.as_any().downcast_ref::<Number>() {
+            return Some(num.value);
+        }
+        // Handle Ident nodes with Constant type
+        if let Some(ident) = expr.as_any().downcast_ref::<Ident>() {
+            if let Some(symbol) = self.symbol_table.get(&ident.value) {
+                if let SymbolType::Constant(value) = symbol.symbol_type {
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
 }
 
 // ---------------------------
@@ -484,28 +501,11 @@ impl ASTVisitor for IRGenerator {
     fn visit_binary_operation(&mut self, binop: &BinOp) -> Pl0Result<String> {
         let left_expr = binop.left.as_ref().ok_or_else(|| Pl0Error::codegen_error("Binary operation missing left operand"))?;
         let right_expr = binop.right.as_ref().ok_or_else(|| Pl0Error::codegen_error("Binary operation missing right operand"))?;
-        // Check for constant operands (Number or Ident with Constant)
-        let left_val = if let Some(num) = left_expr.as_any().downcast_ref::<Number>() {
-            Some(num.value)
-        } else if let Some(ident) = left_expr.as_any().downcast_ref::<Ident>() {
-            self.symbol_table.get(&ident.value).and_then(|s| match s.symbol_type {
-                SymbolType::Constant(val) => Some(val),
-                _ => None,
-            })
-        } else {
-            None
-        };
-        let right_val = if let Some(num) = right_expr.as_any().downcast_ref::<Number>() {
-            Some(num.value)
-        } else if let Some(ident) = right_expr.as_any().downcast_ref::<Ident>() {
-            self.symbol_table.get(&ident.value).and_then(|s| match s.symbol_type {
-                SymbolType::Constant(val) => Some(val),
-                _ => None,
-            })
-        } else {
-            None
-        };
-        if let (Some(left), Some(right)) = (left_val, right_val) {
+        // Try constant folding
+        if let (Some(left), Some(right)) = (
+            self.fold_constant_expression(left_expr),
+            self.fold_constant_expression(right_expr)
+        ) {
             let result = match binop.operator.as_str() {
                 "Plus" => left + right,
                 "Minus" => left - right,
