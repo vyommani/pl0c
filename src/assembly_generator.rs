@@ -73,6 +73,10 @@ impl DataInfo {
                 data_info.runtime_needs.read_int = true;
             } else if line.contains("write_str") {
                 data_info.runtime_needs.write_str = true;
+                let string = line[10..].trim_matches(|c| c == '"' || c == '\'').to_string();
+                if !string.is_empty() && !data_info.strings.contains(&string) {
+                    data_info.strings.push(string);
+                }
             }
         }
         Ok(data_info)
@@ -94,13 +98,32 @@ impl DataInfo {
                 }
             }
             TargetArch::X86_64 => {
-                if !self.constants.is_empty() || !self.variables.is_empty() {
-                    write_line(output, format_args!(".section .data\n"))?;
-                    for (name, value) in &self.constants {
-                        write_line(output, format_args!("{}:\t.quad {}\n", name, value))?;
+                let mut used_constants = HashSet::new();
+                for (name, _) in &self.constants {
+                    if output.contains(name) {
+                        used_constants.insert(name.clone());
                     }
+                }
+                output.push_str("section .data\n");
+                if !self.strings.is_empty() || self.runtime_needs().write_int || self.runtime_needs().write_str {
+                    output.push_str("    newline db 0xA\n");
+                    for (i, s) in self.strings.iter().enumerate() {
+                        output.push_str(&format!("    string_{} db \"{}\", 0\n", i, s));
+                    }
+                }
+                if self.runtime_needs().write_int {
+                    output.push_str("    digitSpace times 20 db 0\n");
+                }
+                for (name, value) in &self.constants {
+                    if used_constants.contains(name) {
+                        output.push_str(&format!("    {} dq {}\n", name, value));
+                    }
+                }
+                if !self.variables.is_empty() {
+                    output.push_str("section .bss\n");
+                    output.push_str("    align 8\n");
                     for v in &self.variables {
-                        write_line(output, format_args!("{}:\t.quad 0\n", v))?;
+                        output.push_str(&format!("    {} resq 1\n", v));
                     }
                 }
             }
