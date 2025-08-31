@@ -149,6 +149,15 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
 }
 
 impl X86_64AssemblyEmitter {
+    fn get_reg_name(&self, reg_idx: usize) -> Pl0Result<String> {
+        RegisterName::from_usize(reg_idx)
+            .map(|name| name.to_string())
+            .ok_or_else(|| Pl0Error::CodeGenError {
+                message: format!("Invalid register index: {}", reg_idx),
+                line: None,
+            })
+    }
+
     fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, bool, bool, bool, Vec<String>) {
         // Optimization: Only include used variables
         let mut variables = HashSet::new();
@@ -529,9 +538,9 @@ impl X86_64AssemblyEmitter {
         let psrc2 = allocator.ensure(src2, output)?;
         let pdst = allocator.alloc(dst, output)?;
 
-        let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
-        let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
-        let pdst_name = RegisterName::from_usize(pdst).unwrap();
+        let psrc1_name = self.get_reg_name(psrc1)?;
+        let psrc2_name = self.get_reg_name(psrc2)?;
+        let pdst_name = self.get_reg_name(pdst)?;
 
         let op_str = match op {
             "add" => "add",
@@ -573,9 +582,9 @@ impl X86_64AssemblyEmitter {
         let psrc2 = allocator.ensure(src2, output)?;
         let pdst = allocator.alloc(dst, output)?;
 
-        let psrc1_name = RegisterName::from_usize(psrc1).unwrap();
-        let psrc2_name = RegisterName::from_usize(psrc2).unwrap();
-        let pdst_name = RegisterName::from_usize(pdst).unwrap();
+        let psrc1_name = self.get_reg_name(psrc1)?;
+        let psrc2_name = self.get_reg_name(psrc2)?;
+        let pdst_name = self.get_reg_name(pdst)?;
 
         let set_instr = match op {
             "cmp_gt" => "setg",
