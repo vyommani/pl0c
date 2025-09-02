@@ -2,11 +2,7 @@ use crate::LineNumber;
 use crate::{symboltable::SymbolTable, token::Token};
 use std::{iter::Peekable, str::Chars};
 use crate::errors::{Pl0Error, Pl0Result};
-pub fn scan(
-    state: &mut LineNumber,
-    file_content: &str,
-    _table: &mut SymbolTable,
-) -> Pl0Result<Vec<(Token, usize)>> {
+pub fn scan(state: &mut LineNumber, file_content: &str, _table: &mut SymbolTable) -> Pl0Result<Vec<(Token, usize)>> {
     let mut chars = file_content.chars().peekable();
     let mut lexeme: Vec<(Token, usize)> = vec![];
     let mut lookahead = false;
@@ -114,10 +110,7 @@ fn comment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result
     Err(Pl0Error::UnterminatedComment { line })
 }
 
-pub fn get_string_literal(
-    chars: &mut Peekable<Chars<'_>>,
-    state: &mut LineNumber,
-) -> Pl0Result<Token> {
+pub fn get_string_literal(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<Token> {
     let mut string_literal = String::new();
     chars.next(); // consume the opening '
     loop {
@@ -153,10 +146,7 @@ fn whitespace(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) {
     }
 }
 
-pub fn assignment(
-    chars: &mut Peekable<Chars<'_>>,
-    state: &mut LineNumber,
-) -> Pl0Result<Token> {
+pub fn assignment(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<Token> {
     chars.next();
     if let Some(c) = chars.peek() {
         if (*c).eq(&'=') {
@@ -170,10 +160,7 @@ pub fn assignment(
     }
 }
 
-pub fn identifier(
-    chars: &mut Peekable<Chars<'_>>,
-    state: &mut LineNumber,
-) -> Pl0Result<Token> {
+pub fn identifier(chars: &mut Peekable<Chars<'_>>, state: &mut LineNumber) -> Pl0Result<Token> {
     let mut idt = String::new();
     loop {
         if let Some(c) = chars.peek() {
@@ -193,13 +180,8 @@ pub fn identifier(
         ("read", Token::Read), ("into", Token::Into), ("size", Token::Size), ("exit", Token::Exit), ("and", Token::And),
         ("or", Token::Or), ("not", Token::Not), ("mod", Token::Modulo), ("forward", Token::Forward),
     ];
-
     let binding = Token::Ident(idt.clone());
-    let token = KEYWORDS
-        .iter()
-        .find(|&&(k, _)| k == idt)
-        .map(|(_, t)| t)
-        .unwrap_or(&binding);
+    let token = KEYWORDS.iter().find(|&&(k, _)| k == idt).map(|(_, t)| t).unwrap_or(&binding);
     Ok(token.clone())
 }
 
