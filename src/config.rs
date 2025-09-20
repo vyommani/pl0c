@@ -58,9 +58,9 @@ pub mod parser {
     use lazy_static::lazy_static;
     use std::collections::{HashMap, HashSet};
 
-    /// Variable offset increment
+    // Variable offset increment
     pub const VAR_OFFSET_INCREMENT: usize = 8;
-    pub const INITIAL_LOCAL_OFFSET: usize = 8;
+    pub const INITIAL_STACK_OFFSET: usize = 16;
 
     lazy_static! {
         pub static ref RESERVED_KEYWORDS: HashSet<String> = [

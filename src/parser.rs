@@ -29,9 +29,9 @@ use crate::errors::Pl0Error;
 
 use crate::config::parser::rename_identifier;
 use crate::config::parser::get_renamed_identifier;
+use crate::config::parser::INITIAL_STACK_OFFSET;
 
 const STACK_SLOT_SIZE: usize = 8;
-const INITIAL_STACK_OFFSET: usize = 8;
 
 pub struct Parser<'a> {
     current_token: Token,
