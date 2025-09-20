@@ -158,81 +158,6 @@ impl X86_64AssemblyEmitter {
             })
     }
 
-    fn collect_data_info(ir: &[String]) -> (HashSet<String>, HashMap<String, String>, bool, bool, bool, Vec<String>) {
-        // Optimization: Only include used variables
-        let mut variables = HashSet::new();
-        let mut constants = HashMap::new();
-        let mut used_vars = HashSet::new();
-        let mut needs_write_int = false;
-        let mut needs_read_int = false;
-        let mut needs_write_str = false;
-        let mut strings = Vec::new();
-        for line in ir {
-            let line = line.trim();
-            if line.starts_with("var ") {
-                let vars = line[4..].split(',').map(|v| v.trim()).filter(|v| !v.is_empty());
-                for v in vars {
-                    variables.insert(v.to_string());
-                }
-            } else if line.starts_with("const ") {
-                if let Some((name, value)) = line[6..].split_once('=') {
-                    constants.insert(name.trim().to_string(), value.trim().to_string());
-                }
-            } else if line.contains("write_int") {
-                needs_write_int = true;
-            } else if line.contains("read_int") {
-                needs_read_int = true;
-            } else if line.contains("write_str") {
-                needs_write_str = true;
-                let string = line[10..].trim_matches(|c| c == '"' || c == '\'').to_string();
-                if !string.is_empty() && !strings.contains(&string) {
-                    strings.push(string);
-                }
-            } else {
-                for word in line.split_whitespace() {
-                    let clean = word.trim_matches(|c| c == ',' || c == '[' || c == ']');
-                    if variables.contains(clean) {
-                        used_vars.insert(clean.to_string());
-                    }
-                }
-            }
-        }
-        (variables, constants, needs_write_int, needs_read_int, needs_write_str, strings,)
-    }
-
-    fn emit_data_section(output: &mut String, variables: &HashSet<String>, constants: &HashMap<String, String>,
-        strings: &[String], needs_write_int: bool, needs_write_str: bool) -> Pl0Result<()> {
-        let mut used_constants = HashSet::new();
-        for (name, _) in constants {
-            if output.contains(name) {
-                used_constants.insert(name.clone());
-            }
-        }
-        output.push_str("section .data\n");
-        if !strings.is_empty() || needs_write_int || needs_write_str {
-            output.push_str("    newline db 0xA\n");
-            for (i, s) in strings.iter().enumerate() {
-                output.push_str(&format!("    string_{} db \"{}\", 0\n", i, s));
-            }
-        }
-        if needs_write_int {
-            output.push_str("    digitSpace times 20 db 0\n");
-        }
-        for (name, value) in constants {
-            if used_constants.contains(name) {
-                output.push_str(&format!("    {} dq {}\n", name, value));
-            }
-        }
-        if !variables.is_empty() {
-            output.push_str("section .bss\n");
-            output.push_str("    align 8\n");
-            for v in variables {
-                output.push_str(&format!("    {} resq 1\n", v));
-            }
-        }
-        Ok(())
-    }
-
     fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String,
         main_output: &mut String, stack_analyzer: &StackAnalyzer, data_info: &DataInfo) -> Pl0Result<()> {
         let mut in_proc = false;
@@ -432,19 +357,6 @@ impl X86_64AssemblyEmitter {
 
     fn strip_brackets(s: &str) -> &str {
         s.trim().trim_start_matches('[').trim_end_matches(']')
-    }
-
-    fn format_global_addr(var: &str) -> String {
-        format!("[{}]", var)
-    }
-
-    fn format_stack_addr(addr: &str) -> String {
-        if addr.starts_with("bp-") || addr.starts_with("rbp-") {
-            let offset = addr.split('-').nth(1).unwrap_or("0").parse::<u32>().unwrap_or(0);
-            format!("[rbp - {}]", offset)
-        } else {
-            format!("[{}]", addr)
-        }
     }
 
     fn emit_ld(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, constants: &HashMap<String, String>) -> Pl0Result<()> {
