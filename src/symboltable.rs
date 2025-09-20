@@ -12,7 +12,7 @@ pub enum SymbolType {
 
 #[derive(Debug, Clone)]
 pub enum SymbolLocation {
-    StackOffset(isize),
+    StackOffset(usize),
     GlobalLabel(String),
     Immediate(i64),
     None,

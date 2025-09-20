@@ -16,7 +16,7 @@ use crate::{
 
 const STACK_ALIGNMENT: usize = 16;
 const WORD_SIZE: usize = 8;
-const INITIAL_STACK_OFFSET: isize = 16;
+use crate::config::parser::INITIAL_STACK_OFFSET;
 
 pub struct IRGenerator {
     label_counter: i32,
@@ -30,7 +30,7 @@ pub struct IRGenerator {
     main_emitted: bool,
     in_procedure: bool,
     current_scope_level: usize,
-    local_var_offset: isize,
+    local_var_offset: usize,
     procedures_emitted: bool,
 }
 
@@ -630,7 +630,7 @@ impl ASTVisitor for IRGenerator {
             if self.in_procedure {
                 // Local variable in procedure - use stack offset
                 let offset = self.local_var_offset;
-                self.local_var_offset += WORD_SIZE as isize; // 8 bytes per variable
+                self.local_var_offset += WORD_SIZE; // 8 bytes per variable
                 self.update_symbol_location(var_name, SymbolLocation::StackOffset(offset), false);
             } else {
                 // Global variable
