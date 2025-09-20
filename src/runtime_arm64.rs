@@ -67,7 +67,7 @@ impl Arm64Runtime {
                 }
                 Ok(())
             },
-            |preg, output| Ok(()),
+            |_preg, _output| Ok(()),
             is_dead_after_fn,
         )
     }
@@ -87,7 +87,7 @@ impl Arm64Runtime {
             output,
             "_read_int",
             true,
-            |preg, output| Ok(()),
+            |_preg, _output| Ok(()),
             |preg, output| write_line(output, format_args!("    mov x{}, x0\n", preg)),
             is_dead_after_fn,
         )
@@ -114,7 +114,7 @@ impl Arm64Runtime {
                 }
                 Ok(())
             },
-            |preg, output| Ok(()),
+            |_preg, _output| Ok(()),
             is_dead_after_fn,
         )
     }

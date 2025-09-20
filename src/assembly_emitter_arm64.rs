@@ -12,7 +12,6 @@ use crate::errors::Pl0Error;
 use regex::Regex;
 use std::{
     collections::HashMap,
-    collections::HashSet,
 };
 use crate::config::register_allocation::RESERVED_REG;
 use crate::config::arm64::MAIN_WRAPPER;
@@ -545,7 +544,7 @@ impl Arm64AssemblyEmitter {
 
     #[allow(clippy::too_many_arguments)]
     fn emit_instructions(&self, op: IROp, op_str: &str, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator,target_output: &mut String,
-        context: &mut ProcContext, line: &str) -> Pl0Result<()> {
+        _context: &mut ProcContext, line: &str) -> Pl0Result<()> {
         match op {
             IROp::Exit => {
                 self.emit_exit(target_output)?;

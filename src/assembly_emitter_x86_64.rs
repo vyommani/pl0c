@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::runtime_x86_64::X86_64Runtime;
 use crate::assembly_generator::RuntimeNeeds;
-use crate::assembly_generator::ProcContext;
+
 use crate::assembly_generator::DataInfo;
 use crate::assembly_generator::TargetArch;
 pub struct X86_64AssemblyEmitter;
