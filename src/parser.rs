@@ -102,33 +102,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Helper function to parse constant declarations
     fn parse_const_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<ConstDecl, Pl0Error> {
         let mut consts = Vec::<(String, i64)>::new();
-
         self.expect(Token::Const)?;
-
-        // Parse first constant
         let mut id = self.get_identifier(&self.current_token)?;
         id = rename_identifier(&id, true, mapped_identifiers);
         self.expect(Token::Ident("".to_string()))?;
         self.expect(Token::Equal)?;
         let num = self.get_numeric_literal(&self.current_token)?;
-
-        table.insert(
-            &id,
-            Symbol::new(
-                SymbolType::Constant(num),
-                self.line_number,
-                SymbolLocation::GlobalLabel(id.clone()),
-                true,
-                table.get_scopes_len() - 1,
-            ),
-        );
+        table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
         self.expect(Token::Number(0))?;
         consts.push((id, num));
-
-        // Parse additional constants
         while self.current_token == Token::Comma {
             self.expect(Token::Comma)?;
             let mut id = self.get_identifier(&self.current_token)?;
@@ -137,32 +121,19 @@ impl<'a> Parser<'a> {
             self.expect(Token::Equal)?;
             let num = self.get_numeric_literal(&self.current_token)?;
 
-            table.insert(
-                &id,
-                Symbol::new(
-                    SymbolType::Constant(num),
-                    self.line_number,
-                    SymbolLocation::GlobalLabel(id.clone()),
-                    true,
-                    table.get_scopes_len() - 1,
-                ),
-            );
+            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
             self.expect(Token::Number(0))?;
             consts.push((id, num));
         }
-
         self.expect(Token::Semicolon)?;
         Ok(ConstDecl::new(consts))
     }
 
-    /// Helper function to parse variable declarations
     fn parse_var_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<VarDecl, Pl0Error> {
         self.expect(Token::Var)?;
-
         let is_global = table.get_scopes_len() == 1;
         let mut offset = INITIAL_STACK_OFFSET;
         let mut idents = Vec::<String>::new();
-
         // Parse first variable
         let mut id = self.get_identifier(&self.current_token)?;
         id = rename_identifier(&id, is_global, mapped_identifiers);
@@ -171,21 +142,9 @@ impl<'a> Parser<'a> {
         } else {
             SymbolLocation::StackOffset(offset.try_into().unwrap())
         };
-
-        table.insert(
-            &id,
-            Symbol::new(
-                SymbolType::Variable,
-                self.line_number,
-                location,
-                is_global,
-                table.get_scopes_len() - 1,
-            ),
-        );
+        table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location,is_global, table.get_scopes_len() - 1));
         self.expect(Token::Ident("".to_string()))?;
         idents.push(id);
-
-        // Parse additional variables
         while self.current_token == Token::Comma {
             if !is_global {
                 offset += STACK_SLOT_SIZE;
@@ -198,21 +157,10 @@ impl<'a> Parser<'a> {
             } else {
                 SymbolLocation::StackOffset(offset.try_into().unwrap())
             };
-
-            table.insert(
-                &id,
-                Symbol::new(
-                    SymbolType::Variable,
-                    self.line_number,
-                    location,
-                    is_global,
-                    table.get_scopes_len() - 1,
-                ),
-            );
+            table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1));
             self.expect(Token::Ident("".to_string()))?;
             idents.push(id);
         }
-
         self.expect(Token::Semicolon)?;
         Ok(VarDecl::new(idents))
     }
@@ -220,33 +168,19 @@ impl<'a> Parser<'a> {
     /// Helper function to parse procedure declarations
     fn parse_procedure_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Vec<(String, Option<Box<dyn Node>>)>, Pl0Error> {
         let mut procedures = Vec::new();
-
         while self.current_token == Token::Procedure {
             // Always insert procedure name in global (top) scope
             self.expect(Token::Procedure)?;
             let mut name = self.get_identifier(&self.current_token)?;
             name = rename_identifier(&name, true, mapped_identifiers);
-
-            table.insert(
-                &name,
-                Symbol::new(
-                    SymbolType::Procedure,
-                    self.line_number,
-                    SymbolLocation::GlobalLabel(name.clone()),
-                    true,
-                    table.get_scopes_len() - 1,
-                ),
-            );
-
+            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1));
             table.push_scope();
             self.expect(Token::Ident("".to_string()))?;
             self.expect(Token::Semicolon)?;
-
             let block = self.block(table, mapped_identifiers)?;
             self.expect(Token::Semicolon)?;
             procedures.push((name, block));
         }
-
         Ok(procedures)
     }
 
@@ -277,7 +211,6 @@ impl<'a> Parser<'a> {
 
         // Parse statement
         let stmt = self.statement(table, mapped_identifiers)?;
-
         Ok(Some(Box::new(Block::new(const_decl, var_decl, proc_decl, stmt))))
     }
 
@@ -461,16 +394,13 @@ impl<'a> Parser<'a> {
         if matches!(self.current_token, Token::Plus | Token::Minus | Token::Not) {
             self.next();
         }
-
         let mut lhs = self.term(table, mapped_identifiers)?;
-
         while matches!(self.current_token, Token::Plus | Token::Minus | Token::Or) {
             let operator = self.current_token.to_string();
             self.next();
             let rhs = self.term(table, mapped_identifiers)?;
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
-
         Ok(lhs)
     }
 
@@ -480,7 +410,6 @@ impl<'a> Parser<'a> {
      */
     fn term(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
         let mut lhs = self.factor(table, mapped_identifiers)?;
-
         while matches!(
             self.current_token,
             Token::Multiply | Token::Divide | Token::Modulo | Token::And
@@ -490,7 +419,6 @@ impl<'a> Parser<'a> {
             let rhs = self.factor(table, mapped_identifiers)?;
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
-
         Ok(lhs)
     }
 

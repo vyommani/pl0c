@@ -304,12 +304,7 @@ impl X86_64AssemblyEmitter {
         Ok(new_main_output)
     }
 
-    fn assemble_final_output(
-        data_output: &str,
-        new_main_output: &str,
-        proc_output: &str,
-        footer: &str,
-    ) -> Pl0Result<String> {
+    fn assemble_final_output(data_output: &str, new_main_output: &str, proc_output: &str, footer: &str) -> Pl0Result<String> {
         let mut final_output = String::new();
         if !data_output.is_empty() {
             final_output.push_str(data_output);
