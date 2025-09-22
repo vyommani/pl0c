@@ -639,11 +639,6 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) -> Pl0Result<()> {
-        // Enter new scope
-        let is_main_block = !self.scope.in_procedure() && self.scope.level() == 0;
-        if is_main_block || !self.scope.in_procedure() {
-            self.scope = self.scope.push_scope(self.scope.in_procedure(), None, is_main_block);
-        }
         // Process constants first
         if !block.const_decl.const_decl.is_empty() {
             block.const_decl.accept(self)?;
@@ -669,10 +664,6 @@ impl ASTVisitor for IRGenerator {
                 self.initialize_local_variables(block)?;
             }
             stmt.accept(self)?;
-        }
-        // Restore original state if we're in a nested context
-        if !self.scope.is_in_main() && !self.scope.in_procedure() {
-            self.scope.pop_scope()?;
         }
         Ok(())
     }
