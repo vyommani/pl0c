@@ -13,10 +13,8 @@ use crate::{
     errors::Pl0Result,
     errors::Pl0Error,
 };
-
-const STACK_ALIGNMENT: usize = 16;
-const WORD_SIZE: usize = 8;
-use crate::config::parser::INITIAL_STACK_OFFSET;
+use crate::scope_info::ScopeInfo;
+use crate::config::codegen::{WORD_SIZE, STACK_ALIGNMENT};
 
 pub struct IRGenerator {
     label_counter: i32,
@@ -28,10 +26,8 @@ pub struct IRGenerator {
     symbol_table: SymbolTable,
     exit_emitted: bool,
     main_emitted: bool,
-    in_procedure: bool,
-    current_scope_level: usize,
-    local_var_offset: usize,
     procedures_emitted: bool,
+    scope: ScopeInfo,
 }
 
 impl IRGenerator {
@@ -49,10 +45,8 @@ impl IRGenerator {
             vreg_prefix: "v".to_string(),
             exit_emitted: false,
             main_emitted: false,
-            in_procedure: false,
-            current_scope_level: 0,
-            local_var_offset: INITIAL_STACK_OFFSET,
             procedures_emitted: false,
+            scope: ScopeInfo::new(),
         }
     }
 
@@ -145,7 +139,7 @@ impl IRGenerator {
     }
 
     fn get_variable_symbol(&self, name: &str, operation: &str) -> Pl0Result<&Symbol> {
-        let symbol = self.symbol_table.get_at_level(name, self.current_scope_level)
+        let symbol = self.symbol_table.get_at_level(name, self.scope.level())
             .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined {}: {}", operation, name)))?;
         if !matches!(symbol.symbol_type, SymbolType::Variable) {
             return Err(Pl0Error::codegen_error(format!("Expected variable but found {:?}: {}", symbol.symbol_type, name)));
@@ -170,7 +164,7 @@ impl IRGenerator {
     // ---------------------------
     fn emit_load_from_symbol(&mut self, symbol: &Symbol, target_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.code);
-        let distance = self.current_scope_level.saturating_sub(symbol.level);
+        let distance = self.scope.level().saturating_sub(symbol.level);
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
                 if distance > 0 {
@@ -187,7 +181,7 @@ impl IRGenerator {
 
     fn emit_store_to_symbol(&mut self, symbol: &Symbol, source_vreg: &str, fallback_name: &str) -> Pl0Result<()> {
         let mut emitter = StringCodeEmitter::new(&mut self.code);
-        let distance = self.current_scope_level.saturating_sub(symbol.level);
+        let distance = self.scope.level().saturating_sub(symbol.level);
         match &symbol.location {
             SymbolLocation::StackOffset(offset) => {
                 if distance > 0 {
@@ -217,7 +211,7 @@ impl IRGenerator {
             // Collect all the variables and their offsets first
             let mut var_offsets = Vec::new();
             for var_name in &block.var_decl.var_decl {
-                if let Some(symbol) = self.symbol_table.get(var_name) {
+                if let Some(symbol) = self.symbol_table.get_at_level(var_name, self.scope.level()) {
                     if let SymbolLocation::StackOffset(offset) = symbol.location {
                         var_offsets.push(offset);
                     }
@@ -372,12 +366,7 @@ impl IRGenerator {
         // Set scope level based on procedure's level in symbol table
         let proc_symbol = self.symbol_table.get(name)
             .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} not found in symbol table", name)))?;
-        let original_scope = self.current_scope_level;
-        let original_offset = self.local_var_offset;
-        let original_in_procedure = self.in_procedure;
-        self.current_scope_level = proc_symbol.level + 1;
-        self.local_var_offset = INITIAL_STACK_OFFSET;
-        self.in_procedure = true;
+        self.scope = self.scope.push_scope(true, Some(proc_symbol.level + 1), false);
         // Calculate stack size
         let mut stack_slots = 0;
         if let Some(proc_block) = proc_block {
@@ -396,10 +385,8 @@ impl IRGenerator {
         // Emit procedure epilogue
         let mut emitter = StringCodeEmitter::new(&mut self.code);
         emitter.emit_proc_exit()?;
-        // Restore state
-        self.current_scope_level = original_scope;
-        self.local_var_offset = original_offset;
-        self.in_procedure = original_in_procedure;
+        // Restore parent scope
+        self.scope.pop_scope()?;
         Ok(())
     }
 
@@ -452,7 +439,7 @@ impl IRGenerator {
 // ---------------------------
 impl ASTVisitor for IRGenerator {
     fn visit_ident(&mut self, ident: &Ident) -> Pl0Result<String> {
-        let symbol = self.symbol_table.get_at_level(&ident.value, self.current_scope_level)
+        let symbol = self.symbol_table.get_at_level(&ident.value, self.scope.level())
             .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined identifier: {}", ident.value)))?.clone();
         match symbol.symbol_type {
             SymbolType::Constant(value) => {
@@ -627,10 +614,8 @@ impl ASTVisitor for IRGenerator {
 
     fn visit_var_decl(&mut self, expr: &VarDecl) -> Pl0Result<()> {
         for var_name in &expr.var_decl {
-            if self.in_procedure {
-                // Local variable in procedure - use stack offset
-                let offset = self.local_var_offset;
-                self.local_var_offset += WORD_SIZE; // 8 bytes per variable
+            if self.scope.in_procedure() {
+                let offset = self.scope.allocate_variable();
                 self.update_symbol_location(var_name, SymbolLocation::StackOffset(offset), false);
             } else {
                 // Global variable
@@ -645,7 +630,7 @@ impl ASTVisitor for IRGenerator {
     fn visit_proc_decl(&mut self, expr: &ProcDecl) -> Pl0Result<()> {
         // Only emit procedures if we're not already in a procedure
         // This prevents duplicate procedure emissions
-        if !self.in_procedure && !self.procedures_emitted {
+        if !self.scope.in_procedure() && !self.procedures_emitted {
             for (name, proc_block) in &expr.procedurs {
                 self.emit_single_procedure(name, proc_block)?;
             }
@@ -654,12 +639,10 @@ impl ASTVisitor for IRGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) -> Pl0Result<()> {
-        let original_scope_level = self.current_scope_level;
-        let original_offset = self.local_var_offset;
-        // Initialize local variables for main block
-        if !self.in_procedure {
-            self.local_var_offset = INITIAL_STACK_OFFSET;
-            self.current_scope_level = 0;
+        // Enter new scope
+        let is_main_block = !self.scope.in_procedure() && self.scope.level() == 0;
+        if is_main_block || !self.scope.in_procedure() {
+            self.scope = self.scope.push_scope(self.scope.in_procedure(), None, is_main_block);
         }
         // Process constants first
         if !block.const_decl.const_decl.is_empty() {
@@ -672,14 +655,14 @@ impl ASTVisitor for IRGenerator {
         }
 
         // Emit all procedures at the top level (only once)
-        if !self.in_procedure && !self.procedures_emitted {
+        if !self.scope.in_procedure() && !self.procedures_emitted {
             self.emit_procedures(block)?;
         }
 
         // Process the main statement
         if let Some(stmt) = &block.statement {
             // Emit main label if this is the main block
-            if !self.in_procedure && !self.main_emitted {
+            if !self.scope.in_procedure() && !self.main_emitted {
                 self.emit_label("main")?;
                 self.main_emitted = true;
                 // Initialize local variables to zero
@@ -688,9 +671,8 @@ impl ASTVisitor for IRGenerator {
             stmt.accept(self)?;
         }
         // Restore original state if we're in a nested context
-        if self.in_procedure {
-            self.current_scope_level = original_scope_level;
-            self.local_var_offset = original_offset;
+        if !self.scope.is_in_main() && !self.scope.in_procedure() {
+            self.scope.pop_scope()?;
         }
         Ok(())
     }

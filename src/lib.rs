@@ -30,6 +30,7 @@ pub mod token;
 pub mod types;
 pub mod utils;
 pub mod visiters;
+pub mod scope_info;
 
 pub const VERSION: &str = "0.1.1";
 

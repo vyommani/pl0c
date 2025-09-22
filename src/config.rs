@@ -1,8 +1,6 @@
 // ARM64 Architecture Constants
 pub mod arm64 {
     // Stack and memory alignment
-    pub const STACK_ALIGNMENT: usize = 16;
-    pub const WORD_SIZE: usize = 8;
     pub const FRAME_POINTER_OFFSET: i32 = -8;
     pub const STACK_FRAME_SIZE: usize = 16;
 
@@ -104,7 +102,8 @@ pub mod parser {
 pub mod codegen {
     // Stack size calculation
     pub const STACK_SIZE_MULTIPLIER: usize = 8;
-
+    pub const STACK_ALIGNMENT: usize = 16;
+    pub const WORD_SIZE: usize = 8;
     // Alignment helpers
     pub fn align_to_16(size: usize) -> usize {
         ((size + 15) / 16) * 16
