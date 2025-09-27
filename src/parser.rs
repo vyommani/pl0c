@@ -231,7 +231,7 @@ impl<'a> Parser<'a> {
             Token::Ident(_) => {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
                 self.expect(Token::Ident("".to_string()))?;
                 self.expect(Token::Assign)?;
                 let expr = self.expression(table, mapped_identifiers)?;
@@ -241,7 +241,7 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Call)?;
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, SymbolType::Procedure, self.line_number);
+                let _ = table.type_check(&id, &SymbolType::Procedure, self.line_number);
                 self.expect(Token::Ident("".to_string()))?;
                 Ok(Some(Box::new(CallStmt::new(id))))
             }
@@ -304,7 +304,7 @@ impl<'a> Parser<'a> {
                     Token::Ident(_) => {
                         let mut id = self.get_identifier(&self.current_token)?;
                         id = get_renamed_identifier(&id, mapped_identifiers);
-                        let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                        let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
                         self.expect(Token::Ident("".to_string()))?;
                         Box::new(WriteStr::new(id))
                     }
@@ -334,7 +334,7 @@ impl<'a> Parser<'a> {
 
                 let mut ident = self.get_identifier(&self.current_token)?;
                 ident = get_renamed_identifier(&ident, mapped_identifiers);
-                let _ = table.type_check(&ident, SymbolType::Identifier, self.line_number);
+                let _ = table.type_check(&ident, &SymbolType::Identifier, self.line_number);
                 self.expect(Token::Ident("".to_string()))?;
 
                 if self.current_token == Token::RParen {
@@ -431,7 +431,7 @@ impl<'a> Parser<'a> {
             Token::Ident(_) => {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, SymbolType::Identifier, self.line_number);
+                let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
                 self.expect(Token::Ident("".to_string()))?;
                 Ok(Some(Box::new(Ident::new(id))))
             }

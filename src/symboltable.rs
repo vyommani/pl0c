@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use crate::Pl0Result;
+use crate::Pl0Error;
 
 #[derive(Debug, Clone)]
 pub enum SymbolType {
@@ -26,7 +28,7 @@ pub struct Symbol {
     pub scope_level: usize,
     pub is_global: bool,
     pub initialized: bool,
-    pub level: usize, // lexical nesting level
+    pub level: usize,
 }
 
 impl Symbol {
@@ -107,41 +109,26 @@ impl SymbolTable {
     }
 
     // Type check a symbol by name and expected type. Returns Ok(()) if found, Err otherwise.
-    pub fn type_check(
-        &self,
-        name: &str,
-        symbol_type: SymbolType,
-        line_number: usize,
-    ) -> Result<(), String> {
-        if self.scopes.is_empty() {
-            return Err(format!("Invalid keyword: {}", name));
-        }
-        let found = self.get(name).is_some();
-        if !found {
-            let msg = match symbol_type {
-                SymbolType::Constant(_) => format!(
-                    "error: constant '{}' is not declared at line: {}",
-                    name, line_number
-                ),
-                SymbolType::Identifier => format!(
-                    "error: Identifier '{}' is not declared at line: {}",
-                    name, line_number
-                ),
-                SymbolType::Variable => format!(
-                    "error: variable '{}' is not declared at line: {}",
-                    name, line_number
-                ),
-                SymbolType::Procedure => format!("error: procedure '{}' is not declared.", name),
-                SymbolType::StringLiteral => format!(
-                    "error: string literal '{}' is not declared at line: {}",
-                    name, line_number
-                ),
-                SymbolType::NumericLiteral => format!(
-                    "error: numeric literal '{}' is not declared at line: {}",
-                    name, line_number
-                ),
-            };
-            return Err(msg);
+    pub fn type_check(&self, name: &str, expected_type: &SymbolType, line_number: usize) -> Pl0Result<()> {
+        let symbol = self.get(name).ok_or_else(|| Pl0Error::UndefinedSymbol {
+            name: name.to_string(),
+            line: line_number,
+        })?;
+        let type_match = match (&symbol.symbol_type, expected_type) {
+            (SymbolType::Constant(_), SymbolType::Constant(_)) => true,
+            (SymbolType::Variable, SymbolType::Variable) => true,
+            (SymbolType::Procedure, SymbolType::Procedure) => true,
+            (SymbolType::StringLiteral, SymbolType::StringLiteral) => true,
+            (SymbolType::NumericLiteral, SymbolType::NumericLiteral) => true,
+            _ => false,
+        };
+        if !type_match {
+            return Err(Pl0Error::TypeMismatch {
+                expected: format!("{:?}", expected_type),
+                found: format!("{:?}", symbol.symbol_type),
+                name: name.to_string(),
+                line: line_number,
+            });
         }
         Ok(())
     }
