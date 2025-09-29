@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::Pl0Result;
 use crate::Pl0Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SymbolType {
     Identifier,
     Constant(i64),
@@ -60,14 +60,25 @@ impl SymbolTable {
         self.scopes.push(HashMap::new());
     }
 
-    pub fn drop_scope(&mut self) {
+    pub fn drop_scope(&mut self) -> Result<(), Pl0Error> {
+        if self.scopes.len() <= 1 {
+            return Err(Pl0Error::codegen_error("Cannot drop global scope - scope underflow"));
+        }
         self.scopes.pop();
+        Ok(())
     }
 
-    pub fn insert(&mut self, name: &str, symbol: Symbol) {
+    pub fn insert(&mut self, name: &str, symbol: Symbol) -> Pl0Result<()>{
+        if name.is_empty() {
+            return Err(Pl0Error::InvalidIdentifier {identifier: name.to_string(), line: symbol.line_number});
+        }
         if let Some(scope) = self.scopes.last_mut() {
+            if scope.contains_key(name) {
+                return Err(Pl0Error::SymbolAlreadyDefined {name: name.to_string(),line: symbol.line_number});
+            }
             scope.insert(name.to_string(), symbol);
         }
+        Ok(())
     }
 
     // Get a reference to a symbol by name, searching from innermost to outermost scope.
@@ -114,15 +125,7 @@ impl SymbolTable {
             name: name.to_string(),
             line: line_number,
         })?;
-        let type_match = match (&symbol.symbol_type, expected_type) {
-            (SymbolType::Constant(_), SymbolType::Constant(_)) => true,
-            (SymbolType::Variable, SymbolType::Variable) => true,
-            (SymbolType::Procedure, SymbolType::Procedure) => true,
-            (SymbolType::StringLiteral, SymbolType::StringLiteral) => true,
-            (SymbolType::NumericLiteral, SymbolType::NumericLiteral) => true,
-            _ => false,
-        };
-        if !type_match {
+        if symbol.symbol_type != *expected_type {
             return Err(Pl0Error::TypeMismatch {
                 expected: format!("{:?}", expected_type),
                 found: format!("{:?}", symbol.symbol_type),
@@ -138,26 +141,30 @@ impl SymbolTable {
     }
 
     pub fn print_symbols(&self) {
-        println!("Symbol Table Contents:");
+        println!("{:-<80}", "");
+        println!(
+            "| {:<15} | {:<15} | {:<20} | {:<10} | {:<12} | {:<10} |",
+            "Scope", "Name", "Type", "Location", "IsGlobal", "Initialized"
+        );
+        println!("{:-<80}", "");
         for (scope_idx, scope) in self.scopes.iter().enumerate() {
-            println!("Scope {}:", scope_idx);
             if scope.is_empty() {
-                println!("  (empty)");
+                println!("| {:<15} | (empty) {:<60} |", scope_idx, "");
             } else {
                 for (name, symbol) in scope {
                     println!(
-                        "  Name: {}, Type: {:?}, Location: {:?}, IsGlobal: {}, Initialized: {}, ScopeLevel: {}, Level: {}",
+                        "| {:<15} | {:<15} | {:<20?} | {:<10?} | {:<12} | {:<10} |",
+                        scope_idx,
                         name,
                         symbol.symbol_type,
                         symbol.location,
                         symbol.is_global,
-                        symbol.initialized,
-                        symbol.scope_level,
-                        symbol.level
+                        symbol.initialized
                     );
                 }
             }
         }
+        println!("{:-<80}", "");
     }
 
     pub fn get_with_distance(&self, name: &str, current_level: usize) -> Option<(&Symbol, usize)> {
@@ -171,5 +178,10 @@ impl SymbolTable {
             distance += 1;
         }
         None
+    }
+
+    // Checks if a symbol with the given name exists in any scope.
+    pub fn contains(&self, name: &str) -> bool {
+        self.get(name).is_some()
     }
 }
