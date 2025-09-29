@@ -128,16 +128,6 @@ impl IRGenerator {
         }
     }
 
-    fn update_symbol_location(&mut self, name: &str, location: SymbolLocation, is_global: bool) {
-        if let Some(symbol) = self.symbol_table.get_mut(name) {
-            symbol.location = location;
-            symbol.is_global = is_global;
-            if is_global {
-                symbol.initialized = true;
-            }
-        }
-    }
-
     fn get_variable_symbol(&self, name: &str, operation: &str) -> Pl0Result<&Symbol> {
         let symbol = self.symbol_table.get_at_level(name, self.scope.level())
             .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined {}: {}", operation, name)))?;
@@ -361,7 +351,6 @@ impl IRGenerator {
     // Procedure Handling
     // ---------------------------
     fn emit_single_procedure(&mut self, name: &str, proc_block: &Option<Box<dyn Node>>) -> Pl0Result<()> {
-        self.update_symbol_location(name, SymbolLocation::GlobalLabel(name.to_string()), true);
         self.emit_label(name)?;
         // Set scope level based on procedure's level in symbol table
         let proc_symbol = self.symbol_table.get(name)
@@ -607,7 +596,6 @@ impl ASTVisitor for IRGenerator {
         for (id, num) in &expr.const_decl {
             let mut emitter = StringCodeEmitter::new(&mut self.constants);
             emitter.emit_const(id, &num.to_string())?;
-            self.update_symbol_location(id, SymbolLocation::Immediate(*num), true);
         }
         Ok(())
     }
@@ -616,12 +604,10 @@ impl ASTVisitor for IRGenerator {
         for var_name in &expr.var_decl {
             if self.scope.in_procedure() {
                 let offset = self.scope.allocate_variable();
-                self.update_symbol_location(var_name, SymbolLocation::StackOffset(offset), false);
             } else {
                 // Global variable
                 let mut emitter = StringCodeEmitter::new(&mut self.variables);
                 emitter.emit_var(var_name)?;
-                self.update_symbol_location(var_name, SymbolLocation::GlobalLabel(var_name.clone()), true);
             }
         }
         Ok(())

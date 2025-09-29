@@ -110,7 +110,7 @@ impl<'a> Parser<'a> {
         self.expect(Token::Ident("".to_string()))?;
         self.expect(Token::Equal)?;
         let num = self.get_numeric_literal(&self.current_token)?;
-        table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
+        table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1));
         self.expect(Token::Number(0))?;
         consts.push((id, num));
         while self.current_token == Token::Comma {
@@ -121,7 +121,7 @@ impl<'a> Parser<'a> {
             self.expect(Token::Equal)?;
             let num = self.get_numeric_literal(&self.current_token)?;
 
-            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::GlobalLabel(id.clone()), true, table.get_scopes_len() - 1));
+            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1));
             self.expect(Token::Number(0))?;
             consts.push((id, num));
         }
@@ -142,7 +142,7 @@ impl<'a> Parser<'a> {
         } else {
             SymbolLocation::StackOffset(offset.try_into().unwrap())
         };
-        table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location,is_global, table.get_scopes_len() - 1));
+        table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1));
         self.expect(Token::Ident("".to_string()))?;
         idents.push(id);
         while self.current_token == Token::Comma {
