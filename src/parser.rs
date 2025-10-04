@@ -395,15 +395,18 @@ impl<'a> Parser<'a> {
      * expression = [ "+" | "-" | "not" ] term { ( "+" | "-" | "or" ) term }
      */
     fn expression(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
-        // Handle unary operators
-        if matches!(self.current_token, Token::Plus | Token::Minus | Token::Not) {
-            self.next();
-        }
         let mut lhs = self.term(table, mapped_identifiers)?;
         while matches!(self.current_token, Token::Plus | Token::Minus | Token::Or) {
             let operator = self.current_token.to_string();
             self.next();
             let rhs = self.term(table, mapped_identifiers)?;
+            if lhs.is_none() || rhs.is_none() {
+                return Err(Pl0Error::SyntaxError {
+                    expected: "expression".to_string(),
+                    found: "none".to_string(),
+                    line: self.line_number,
+                });
+            }
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
         Ok(lhs)
@@ -428,8 +431,9 @@ impl<'a> Parser<'a> {
     }
 
     /**
+     * I enhance it to handle complex factors like unary plus/minus and parentheses.
      * Parse a factor according to the grammar:
-     * factor = ident | number | "(" expression ")" .
+     * factor = ident | number | "(" expression ")" | [ "+" | "-" ] factor
      */
     fn factor(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Option<Box<dyn ExpressionNode>>, Pl0Error> {
         match &self.current_token {
@@ -461,6 +465,23 @@ impl<'a> Parser<'a> {
                 let expr = self.expression(table, mapped_identifiers)?;
                 self.expect(Token::RParen)?;
                 Ok(expr)
+            }
+            Token::Minus => {
+                self.expect(Token::Minus)?;
+                let operand = self.factor(table, mapped_identifiers)?;
+                if operand.is_none() {
+                    return Err(Pl0Error::SyntaxError {
+                        expected: "factor".to_string(),
+                        found: "none".to_string(),
+                        line: self.line_number,
+                    });
+                }
+                let zero = Some(Box::new(Number::new(0)) as Box<dyn ExpressionNode>);
+                Ok(Some(Box::new(BinOp::new(zero, operand, "Minus".to_string()))))
+            }
+            Token::Plus => {
+                self.expect(Token::Plus)?;
+                self.factor(table, mapped_identifiers)
             }
             _ => Ok(None), // No factor found
         }

@@ -22,6 +22,7 @@ use pl0c::statement::WhileStatement;
 use crate::io::Read;
 use pl0c::io::WriteStr;
 use pl0c::ast::Exit;
+use pl0c::expression::RelationalCondition;
 
 #[test]
 fn test_complex_symbols() -> Pl0Result<()> {
@@ -1456,4 +1457,716 @@ fn test_complex_calculator_program() -> Pl0Result<()> {
                 panic!("Expected error but parsing succeeded");
             }
         }
+    }
+    #[test]
+    fn test_multiple_constant_declarations() -> Pl0Result<()> {
+        let source = "
+            const a = 10;
+            const b = 20;
+            var x;
+            begin
+                x := a
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        assert!(ast.is_some(), "Expected AST, found None");
+
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        
+        assert_eq!(block.const_decl.const_decl.len(), 2, "Expected 2 constants");
+        assert_eq!(block.const_decl.const_decl[0], ("a".to_string(), 10));
+        assert_eq!(block.const_decl.const_decl[1], ("b".to_string(), 20));
+        assert_eq!(block.var_decl.var_decl.len(), 1, "Expected 1 variable");
+        assert_eq!(block.var_decl.var_decl[0], "x");
+        
+        let stmt = block.statement.as_ref().expect("Expected statement in block").as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        assert_eq!(stmt.stmts.len(), 1, "Expected one statement in BeginStmt");
+        
+        let assign = stmt.stmts[0].as_ref().expect("Expected statement").as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "x", "Expected assignment to x");
+        assert_eq!(assign.expr.as_ref().expect("Expected expression").as_any().downcast_ref::<Ident>().expect("Expected Ident").value, "a");
+        
+        let a_symbol = table.get("a").expect("Constant a not found");
+        assert_eq!(a_symbol.symbol_type, SymbolType::Constant(10));
+        assert_eq!(a_symbol.level, 0);
+        let b_symbol = table.get("b").expect("Constant b not found");
+        assert_eq!(b_symbol.symbol_type, SymbolType::Constant(20));
+        assert_eq!(b_symbol.level, 0);
+        let x_symbol = table.get("x").expect("Variable x not found");
+        assert_eq!(x_symbol.symbol_type, SymbolType::Variable);
+        assert_eq!(x_symbol.level, 0);
+        
+        Ok(())
+    }
+    #[test]
+    fn test_duplicate_constant_declaration_1() -> Pl0Result<()> {
+        let source = "const c = 10;
+            const c = 20;
+            begin
+                c := 5
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+        
+        assert!(result.is_err(), "Expected error for duplicate constant declaration");
+        
+        match result {
+            Err(Pl0Error::SymbolAlreadyDefined { name, line }) => {
+                assert_eq!(name, "c", "Expected duplicate constant c");
+                assert_eq!(line, 2, "Expected error on line 2");
+                Ok(())
+            }
+            Err(_) => {
+                panic!("Expected SymbolAlreadyDefined error, got a different error");
+            }
+            Ok(_) => {
+                panic!("Expected error but parsing succeeded");
+            }
+        }
+    }
+    #[test]
+    fn test_multiple_variable_declarations() -> Pl0Result<()> {
+        let source = "
+            var x;
+            var y;
+            begin
+                x := 10;
+                y := 20
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        assert!(ast.is_some(), "Expected AST, found None");
+
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        
+        assert_eq!(block.const_decl.const_decl.len(), 0, "Expected no constants");
+        assert_eq!(block.var_decl.var_decl.len(), 2, "Expected 2 variables");
+        assert_eq!(block.var_decl.var_decl[0], "x");
+        assert_eq!(block.var_decl.var_decl[1], "y");
+        
+        let stmt = block.statement.as_ref().expect("Expected statement in block").as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        assert_eq!(stmt.stmts.len(), 2, "Expected two statements in BeginStmt");
+        
+        let assign1 = stmt.stmts[0].as_ref().expect("Expected first statement").as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign1.identifier, "x", "Expected assignment to x");
+        assert_eq!(assign1.expr.as_ref().expect("Expected expression").as_any().downcast_ref::<Number>().expect("Expected Number").value, 10);
+        
+        let assign2 = stmt.stmts[1].as_ref().expect("Expected second statement").as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign2.identifier, "y", "Expected assignment to y");
+        assert_eq!(assign2.expr.as_ref().expect("Expected expression").as_any().downcast_ref::<Number>().expect("Expected Number").value, 20);
+        
+        let x_symbol = table.get("x").expect("Variable x not found");
+        assert_eq!(x_symbol.symbol_type, SymbolType::Variable);
+        assert_eq!(x_symbol.level, 0);
+        let y_symbol = table.get("y").expect("Variable y not found");
+        assert_eq!(y_symbol.symbol_type, SymbolType::Variable);
+        assert_eq!(y_symbol.level, 0);
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_duplicate_variable_declaration() -> Pl0Result<()> {
+        let source = "
+            var x;
+            var x;
+            begin
+                x := 10
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+        
+        assert!(result.is_err(), "Expected error for duplicate variable declaration");
+        
+        match result {
+            Err(Pl0Error::SymbolAlreadyDefined { name, line }) => {
+                assert_eq!(name, "x", "Expected duplicate variable x");
+                assert_eq!(line, 3, "Expected error on line 2");
+                Ok(())
+            }
+            Err(_) => {
+                panic!("Expected SymbolAlreadyDefined error, got a different error");
+            }
+            Ok(_) => {
+                panic!("Expected error but parsing succeeded");
+            }
+        }
+    }
+    
+    #[test]
+    fn test_complex_expression_1() -> Pl0Result<()> {
+        let source = "
+            var x;
+            begin
+                x := -5 + (3 * 2) mod 4
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        
+        assert_eq!(block.var_decl.var_decl.len(), 1, "Expected one variable");
+        assert_eq!(block.var_decl.var_decl[0], "x");
+        assert_eq!(block.const_decl.const_decl.len(), 0, "Expected no constants");
+        
+        let stmt = block.statement.as_ref().expect("Expected statement in block").as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        assert_eq!(stmt.stmts.len(), 1, "Expected one statement in BeginStmt");
+        
+        let assign = stmt.stmts[0].as_ref().expect("Expected statement").as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "x", "Expected assignment to x");
+        
+        let bin_op = assign.expr.as_ref().expect("Expected expression").as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(bin_op.operator, "Plus", "Expected plus operator");
+        
+        let x_symbol = table.get("x").expect("Variable x not found");
+        assert_eq!(x_symbol.symbol_type, SymbolType::Variable);
+        assert_eq!(x_symbol.level, 0);
+        
+        Ok(())
+    }
+    #[test]
+    fn test_unary_minus_works() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := -5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Should be: BinOp(0, 5, "Minus")
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for unary minus");
+        assert_eq!(expr.operator, "Minus");
+        
+        // Left should be 0
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0);
+        
+        // Right should be 5
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(5)");
+        assert_eq!(right.value, 5);
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_unary_minus_with_literal() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := -5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        assert_eq!(assign.identifier, "x");
+        
+        // Should parse as: 0 - 5
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for unary minus");
+        assert_eq!(expr.operator, "Minus", "Expected Minus operator");
+        
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0, "Left operand should be 0");
+        
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(5)");
+        assert_eq!(right.value, 5, "Right operand should be 5");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_minus_with_variable() -> Pl0Result<()> {
+        let source = "
+        var x, y;
+        begin
+            x := 10;
+            y := -x
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Second statement: y := -x
+        let assign = stmt.stmts[1].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "y");
+        
+        // Should parse as: 0 - x
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for unary minus");
+        assert_eq!(expr.operator, "Minus", "Expected Minus operator");
+        
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0, "Left operand should be 0");
+        
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident");
+        assert!(right.value.contains("x"), "Right operand should be x");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_minus_in_expression() -> Pl0Result<()> {
+        let source = "
+        var x, y;
+        begin
+            x := 10;
+            y := -x + 5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Second statement: y := -x + 5
+        let assign = stmt.stmts[1].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Should parse as: (0 - x) + 5
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Plus", "Expected Plus operator at top level");
+        
+        // Left side should be (0 - x)
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for unary minus");
+        assert_eq!(left.operator, "Minus", "Expected Minus for unary operator");
+        
+        // Right side should be 5
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number");
+        assert_eq!(right.value, 5, "Right operand should be 5");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_plus_is_noop() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := +5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Unary plus should be ignored, just parse as 5
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number");
+        assert_eq!(expr.value, 5, "Unary plus should not affect the value");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_minus_with_parentheses() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := -(5 + 3)
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Should parse as: 0 - (5 + 3)
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Minus", "Expected Minus operator");
+        
+        // Left should be 0
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0);
+        
+        // Right should be (5 + 3)
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(right.operator, "Plus", "Expected Plus inside parentheses");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_minus_in_condition() -> Pl0Result<()> {
+        let source = "
+        var x, result;
+        begin
+            x := 10;
+            if -x < 0 then
+                result := 1
+            else
+                result := 0
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Second statement: if -x < 0
+        let if_stmt = stmt.stmts[1].as_ref().unwrap().as_any().downcast_ref::<IfStmt>().expect("Expected IfStmt");
+        
+        let condition = if_stmt.condition.as_ref().unwrap().as_any().downcast_ref::<RelationalCondition>().expect("Expected RelationalCondition");
+        assert_eq!(condition.operator, "LessThan", "Expected LessThan operator");
+        
+        // Left should be (0 - x)
+        let left = condition.left.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for unary minus");
+        assert_eq!(left.operator, "Minus", "Expected Minus for unary operator");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_complex_unary_expression() -> Pl0Result<()> {
+        let source = "
+        var a, b, c;
+        begin
+            a := 5;
+            b := 3;
+            c := -a * b + -b
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Third statement: c := -a * b + -b
+        let assign = stmt.stmts[2].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Should parse as: ((-a) * b) + (-b)
+        // Top level should be Plus
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Plus", "Expected Plus at top level");
+        
+        // Left should be ((-a) * b)
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(left.operator, "Multiply", "Expected Multiply");
+        
+        // Right should be (-b)
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(right.operator, "Minus", "Expected Minus for unary operator");
+        
+        Ok(())
+    }
+    #[test]
+    fn test_double_unary_minus() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := --5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        
+        // Should parse as: 0 - (0 - 5)
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Minus", "Expected outer Minus");
+        
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0);
+        
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected inner BinOp");
+        assert_eq!(right.operator, "Minus", "Expected inner Minus");
+        
+        Ok(())
+    }
+    #[test]
+    fn test_nested_unary_and_binary() -> Pl0Result<()> {
+        let source = "
+        var a, b, c, d;
+        begin
+            a := -b * -c + d
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Statement: a := -b * -c + d
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "a", "Expected assignment to 'a'");
+        
+        // Should parse as: ((-b) * (-c)) + d
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Plus", "Expected Plus at top level");
+        
+        // Left: (-b) * (-c)
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(left.operator, "Multiply", "Expected Multiply");
+        
+        // Left of Multiply: -b
+        let left_left = left.left.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for -b");
+        assert_eq!(left_left.operator, "Minus", "Expected Minus for unary -b");
+        let left_left_left = left_left.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left_left_left.value, 0);
+        let left_left_right = left_left.right.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident(b)");
+        assert_eq!(left_left_right.value, "b");
+        
+        // Right of Multiply: -c
+        let left_right = left.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for -c");
+        assert_eq!(left_right.operator, "Minus", "Expected Minus for unary -c");
+        let left_right_left = left_right.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left_right_left.value, 0);
+        let left_right_right = left_right.right.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident(c)");
+        assert_eq!(left_right_right.value, "c");
+        
+        // Right of Plus: d
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident(d)");
+        assert_eq!(right.value, "d");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_multiple_unary_minus() -> Pl0Result<()> {
+        let source = "
+        var a;
+        begin
+            a := ---5
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Statement: a := ---5
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "a", "Expected assignment to 'a'");
+        
+        // Should parse as: 0 - (0 - (0 - 5))
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Minus", "Expected outer Minus");
+        
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0);
+        
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected inner BinOp");
+        assert_eq!(right.operator, "Minus", "Expected inner Minus");
+        
+        let right_left = right.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(right_left.value, 0);
+        
+        let right_right = right.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected inner-inner BinOp");
+        assert_eq!(right_right.operator, "Minus", "Expected inner-inner Minus");
+        
+        let right_right_left = right_right.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(right_right_left.value, 0);
+        
+        let right_right_right = right_right.right.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(5)");
+        assert_eq!(right_right_right.value, 5);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_unary_with_parenthesized_expression() -> Pl0Result<()> {
+        let source = "
+        var a, b, c;
+        begin
+            a := -(b + c)
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        
+        assert!(ast.is_some(), "Expected AST, found None");
+        
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        
+        // Statement: a := -(b + c)
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+        assert_eq!(assign.identifier, "a", "Expected assignment to 'a'");
+        
+        // Should parse as: 0 - (b + c)
+        let expr = assign.expr.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp");
+        assert_eq!(expr.operator, "Minus", "Expected Minus for unary operator");
+        
+        let left = expr.left.as_ref().unwrap().as_any().downcast_ref::<Number>().expect("Expected Number(0)");
+        assert_eq!(left.value, 0);
+        
+        let right = expr.right.as_ref().unwrap().as_any().downcast_ref::<BinOp>().expect("Expected BinOp for (b + c)");
+        assert_eq!(right.operator, "Plus", "Expected Plus for b + c");
+        
+        let right_left = right.left.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident(b)");
+        assert_eq!(right_left.value, "b");
+        
+        let right_right = right.right.as_ref().unwrap().as_any().downcast_ref::<Ident>().expect("Expected Ident(c)");
+        assert_eq!(right_right.value, "c");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_unary_expression() -> Pl0Result<()> {
+        let source = "var a;
+        begin
+            a := -
+        end.
+        ";
+        
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+        
+        assert!(result.is_err(), "Expected parse error for invalid expression");
+        
+        if let Err(Pl0Error::SyntaxError { expected, found, line }) = result {
+            assert_eq!(expected, "factor", "Expected 'factor' in error");
+            assert_eq!(found, "none", "Expected 'none' in error");
+            assert_eq!(line, 4, "Expected error on line 4");
+        } else {
+            panic!("Expected SyntaxError, got a different error");
+        }
+        
+        Ok(())
     }
