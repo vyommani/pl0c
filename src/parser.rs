@@ -104,64 +104,59 @@ impl<'a> Parser<'a> {
 
     fn parse_const_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<ConstDecl, Pl0Error> {
         let mut consts = Vec::<(String, i64)>::new();
-        self.expect(Token::Const)?;
-        let mut id = self.get_identifier(&self.current_token)?;
-        id = rename_identifier(&id, true, mapped_identifiers);
-        self.expect(Token::Ident("".to_string()))?;
-        self.expect(Token::Equal)?;
-        let num = self.get_numeric_literal(&self.current_token)?;
-        table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1));
-        self.expect(Token::Number(0))?;
-        consts.push((id, num));
-        while self.current_token == Token::Comma {
-            self.expect(Token::Comma)?;
+        while self.current_token == Token::Const {
+            self.expect(Token::Const)?;
             let mut id = self.get_identifier(&self.current_token)?;
             id = rename_identifier(&id, true, mapped_identifiers);
             self.expect(Token::Ident("".to_string()))?;
             self.expect(Token::Equal)?;
             let num = self.get_numeric_literal(&self.current_token)?;
-
-            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1));
+            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
             self.expect(Token::Number(0))?;
             consts.push((id, num));
+            while self.current_token == Token::Comma {
+                self.expect(Token::Comma)?;
+                let mut id = self.get_identifier(&self.current_token)?;
+                id = rename_identifier(&id, true, mapped_identifiers);
+                self.expect(Token::Ident("".to_string()))?;
+                self.expect(Token::Equal)?;
+                let num = self.get_numeric_literal(&self.current_token)?;
+                table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
+                self.expect(Token::Number(0))?;
+                consts.push((id, num));
+            }
+            self.expect(Token::Semicolon)?;
         }
-        self.expect(Token::Semicolon)?;
         Ok(ConstDecl::new(consts))
     }
 
     fn parse_var_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<VarDecl, Pl0Error> {
-        self.expect(Token::Var)?;
-        let is_global = table.get_scopes_len() == 1;
-        let mut offset = INITIAL_STACK_OFFSET;
         let mut idents = Vec::<String>::new();
-        // Parse first variable
-        let mut id = self.get_identifier(&self.current_token)?;
-        id = rename_identifier(&id, is_global, mapped_identifiers);
-        let location = if is_global {
-            SymbolLocation::GlobalLabel(id.clone())
-        } else {
-            SymbolLocation::StackOffset(offset.try_into().unwrap())
-        };
-        table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1));
-        self.expect(Token::Ident("".to_string()))?;
-        idents.push(id);
-        while self.current_token == Token::Comma {
-            if !is_global {
-                offset += STACK_SLOT_SIZE;
+        while self.current_token == Token::Var {
+            self.expect(Token::Var)?;
+            let is_global = table.get_scopes_len() == 1;
+            let mut offset = INITIAL_STACK_OFFSET;
+            loop {
+                let mut id = self.get_identifier(&self.current_token)?;
+                id = rename_identifier(&id, is_global, mapped_identifiers);
+                let location = if is_global {
+                    SymbolLocation::GlobalLabel(id.clone())
+                } else {
+                    SymbolLocation::StackOffset(offset.try_into().unwrap())
+                };
+                table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1))?;
+                self.expect(Token::Ident("".to_string()))?;
+                idents.push(id);
+                if self.current_token != Token::Comma {
+                    break;
+                }
+                if !is_global {
+                    offset += STACK_SLOT_SIZE;
+                }
+                self.expect(Token::Comma)?;
             }
-            self.expect(Token::Comma)?;
-            let mut id = self.get_identifier(&self.current_token)?;
-            id = rename_identifier(&id, is_global, mapped_identifiers);
-            let location = if is_global {
-                SymbolLocation::GlobalLabel(id.clone())
-            } else {
-                SymbolLocation::StackOffset(offset.try_into().unwrap())
-            };
-            table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1));
-            self.expect(Token::Ident("".to_string()))?;
-            idents.push(id);
+            self.expect(Token::Semicolon)?;
         }
-        self.expect(Token::Semicolon)?;
         Ok(VarDecl::new(idents))
     }
 
@@ -173,7 +168,7 @@ impl<'a> Parser<'a> {
             self.expect(Token::Procedure)?;
             let mut name = self.get_identifier(&self.current_token)?;
             name = rename_identifier(&name, true, mapped_identifiers);
-            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1));
+            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1))?;
             table.push_scope();
             self.expect(Token::Ident("".to_string()))?;
             self.expect(Token::Semicolon)?;
@@ -231,7 +226,17 @@ impl<'a> Parser<'a> {
             Token::Ident(_) => {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
+                let symbol = table.get(&id).ok_or_else(|| Pl0Error::UndefinedSymbol {
+                    name: id.clone(),
+                    line: self.line_number,
+                })?;
+                if matches!(symbol.symbol_type, SymbolType::Constant(_)) {
+                    return Err(Pl0Error::AssignmentToConstant {
+                        name: id.clone(),
+                        line: self.line_number,
+                    });
+                }
+                table.type_check(&id, &SymbolType::Variable, self.line_number)?;
                 self.expect(Token::Ident("".to_string()))?;
                 self.expect(Token::Assign)?;
                 let expr = self.expression(table, mapped_identifiers)?;
@@ -241,7 +246,7 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Call)?;
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, &SymbolType::Procedure, self.line_number);
+                table.type_check(&id, &SymbolType::Procedure, self.line_number)?;
                 self.expect(Token::Ident("".to_string()))?;
                 Ok(Some(Box::new(CallStmt::new(id))))
             }
@@ -304,7 +309,7 @@ impl<'a> Parser<'a> {
                     Token::Ident(_) => {
                         let mut id = self.get_identifier(&self.current_token)?;
                         id = get_renamed_identifier(&id, mapped_identifiers);
-                        let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
+                        table.type_check(&id, &SymbolType::Variable, self.line_number)?;
                         self.expect(Token::Ident("".to_string()))?;
                         Box::new(WriteStr::new(id))
                     }
@@ -334,7 +339,7 @@ impl<'a> Parser<'a> {
 
                 let mut ident = self.get_identifier(&self.current_token)?;
                 ident = get_renamed_identifier(&ident, mapped_identifiers);
-                let _ = table.type_check(&ident, &SymbolType::Identifier, self.line_number);
+                table.type_check(&ident, &SymbolType::Variable, self.line_number)?;
                 self.expect(Token::Ident("".to_string()))?;
 
                 if self.current_token == Token::RParen {
@@ -431,7 +436,18 @@ impl<'a> Parser<'a> {
             Token::Ident(_) => {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
-                let _ = table.type_check(&id, &SymbolType::Identifier, self.line_number);
+                let symbol = table.get(&id).ok_or_else(|| Pl0Error::UndefinedSymbol {
+                    name: id.clone(),
+                    line: self.line_number,
+                })?;
+                if !matches!(symbol.symbol_type, SymbolType::Variable | SymbolType::Constant(_)) {
+                    return Err(Pl0Error::TypeMismatch {
+                        expected: "Variable or Constant".to_string(),
+                        found: format!("{:?}", symbol.symbol_type),
+                        name: id.clone(),
+                        line: self.line_number,
+                    });
+                }
                 self.expect(Token::Ident("".to_string()))?;
                 Ok(Some(Box::new(Ident::new(id))))
             }

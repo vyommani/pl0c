@@ -46,6 +46,10 @@ pub enum Pl0Error {
         number: String,
         line: usize,
     },
+    AssignmentToConstant {
+        name: String,
+        line: usize,
+    },
     
     // Semantic analysis errors
     UndefinedSymbol {
@@ -62,7 +66,10 @@ pub enum Pl0Error {
         name: String,
         line: usize,
     },
-    
+    DuplicateSymbol {
+        name: String,
+        line: usize,
+    },
     // Code generation errors
     CodeGenError {
         message: String,
@@ -184,6 +191,12 @@ impl fmt::Display for Pl0Error {
             }
             Pl0Error::SymbolAlreadyDefined { name, line } => {
                 write!(f, "Symbol '{}' already defined at line {}", name, line)
+            }
+            Pl0Error::DuplicateSymbol { name, line } => {
+                write!(f, "Duplicate symbol '{}' at line {}", name, line)
+            }
+            Pl0Error::AssignmentToConstant { name, line } => {
+                write!(f, "Cannot assign to constant '{}' at line {}", name, line)
             }
             
             Pl0Error::CodeGenError { message, line } => {
