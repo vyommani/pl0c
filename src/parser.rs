@@ -147,11 +147,11 @@ impl<'a> Parser<'a> {
                 table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1))?;
                 self.expect(Token::Ident("".to_string()))?;
                 idents.push(id);
-                if self.current_token != Token::Comma {
-                    break;
-                }
                 if !is_global {
                     offset += STACK_SLOT_SIZE;
+                }
+                if self.current_token != Token::Comma {
+                    break;
                 }
                 self.expect(Token::Comma)?;
             }
