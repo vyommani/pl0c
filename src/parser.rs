@@ -101,28 +101,52 @@ impl<'a> Parser<'a> {
             ))),
         }
     }
+    
+    fn expect_ident(&mut self) -> Result<(), Pl0Error> {
+        if !matches!(self.current_token, Token::Ident(_)) {
+            return Err(Pl0Error::SyntaxError {
+                expected: "identifier".to_string(),
+                found: self.current_token.to_string(),
+                line: self.line_number,
+            });
+        }
+        self.next();
+        Ok(())
+    }
 
+    fn expect_number(&mut self) -> Result<(), Pl0Error> {
+        if !matches!(self.current_token, Token::Number(_)) {
+            return Err(Pl0Error::SyntaxError {
+                expected: "number".to_string(),
+                found: self.current_token.to_string(),
+                line: self.line_number,
+            });
+        }
+        self.next();
+        Ok(())
+    }
+    
     fn parse_const_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<ConstDecl, Pl0Error> {
         let mut consts = Vec::<(String, i64)>::new();
         while self.current_token == Token::Const {
             self.expect(Token::Const)?;
             let mut id = self.get_identifier(&self.current_token)?;
             id = rename_identifier(&id, true, mapped_identifiers);
-            self.expect(Token::Ident("".to_string()))?;
+            self.expect_ident()?;
             self.expect(Token::Equal)?;
             let num = self.get_numeric_literal(&self.current_token)?;
             table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
-            self.expect(Token::Number(0))?;
+            self.expect_number()?;
             consts.push((id, num));
             while self.current_token == Token::Comma {
                 self.expect(Token::Comma)?;
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = rename_identifier(&id, true, mapped_identifiers);
-                self.expect(Token::Ident("".to_string()))?;
+                self.expect_ident()?;
                 self.expect(Token::Equal)?;
                 let num = self.get_numeric_literal(&self.current_token)?;
                 table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
-                self.expect(Token::Number(0))?;
+                self.expect_number()?;
                 consts.push((id, num));
             }
             self.expect(Token::Semicolon)?;
@@ -145,7 +169,7 @@ impl<'a> Parser<'a> {
                     SymbolLocation::StackOffset(offset.try_into().unwrap())
                 };
                 table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1))?;
-                self.expect(Token::Ident("".to_string()))?;
+                self.expect_ident()?;
                 idents.push(id);
                 if !is_global {
                     offset += STACK_SLOT_SIZE;
@@ -170,7 +194,7 @@ impl<'a> Parser<'a> {
             name = rename_identifier(&name, true, mapped_identifiers);
             table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1))?;
             table.push_scope();
-            self.expect(Token::Ident("".to_string()))?;
+            self.expect_ident()?;
             self.expect(Token::Semicolon)?;
             let block = self.block(table, mapped_identifiers)?;
             self.expect(Token::Semicolon)?;
@@ -237,7 +261,7 @@ impl<'a> Parser<'a> {
                     });
                 }
                 table.type_check(&id, &SymbolType::Variable, self.line_number)?;
-                self.expect(Token::Ident("".to_string()))?;
+                self.expect_ident()?;
                 self.expect(Token::Assign)?;
                 let expr = self.expression(table, mapped_identifiers)?;
                 Ok(Some(Box::new(AssignStmt::new(id, expr))))
@@ -247,7 +271,7 @@ impl<'a> Parser<'a> {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = get_renamed_identifier(&id, mapped_identifiers);
                 table.type_check(&id, &SymbolType::Procedure, self.line_number)?;
-                self.expect(Token::Ident("".to_string()))?;
+                self.expect_ident()?;
                 Ok(Some(Box::new(CallStmt::new(id))))
             }
             Token::Begin => {
@@ -310,7 +334,7 @@ impl<'a> Parser<'a> {
                         let mut id = self.get_identifier(&self.current_token)?;
                         id = get_renamed_identifier(&id, mapped_identifiers);
                         table.type_check(&id, &SymbolType::Variable, self.line_number)?;
-                        self.expect(Token::Ident("".to_string()))?;
+                        self.expect_ident()?;
                         Box::new(WriteStr::new(id))
                     }
                     Token::StringLiteral(_) => {
@@ -340,8 +364,7 @@ impl<'a> Parser<'a> {
                 let mut ident = self.get_identifier(&self.current_token)?;
                 ident = get_renamed_identifier(&ident, mapped_identifiers);
                 table.type_check(&ident, &SymbolType::Variable, self.line_number)?;
-                self.expect(Token::Ident("".to_string()))?;
-
+                self.expect_ident()?;
                 if self.current_token == Token::RParen {
                     self.expect(Token::RParen)?;
                 }
@@ -452,12 +475,12 @@ impl<'a> Parser<'a> {
                         line: self.line_number,
                     });
                 }
-                self.expect(Token::Ident("".to_string()))?;
+                self.expect_ident()?;
                 Ok(Some(Box::new(Ident::new(id))))
             }
             Token::Number(_) => {
                 let num = self.get_numeric_literal(&self.current_token)?;
-                self.expect(Token::Number(0))?;
+                self.expect_number()?;
                 Ok(Some(Box::new(Number::new(num))))
             }
             Token::LParen => {
