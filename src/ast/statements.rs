@@ -1,6 +1,7 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
+use std::any::Any;
 
 pub struct AssignStmt {
     pub identifier: String,
@@ -151,6 +152,33 @@ impl Node for CallStmt {
         print!("call {}", &self.identifier);
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+
+pub struct Exit {
+    pub expr: Option<Box<dyn ExpressionNode>>,
+}
+
+impl Exit {
+    pub fn new(expr: Option<Box<dyn ExpressionNode>>) -> Self {
+        Self { expr: expr }
+    }
+}
+
+impl Node for Exit {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
+        visitor.visit_exit(self)
+    }
+    fn print(&self) {
+        print!("exit ");
+        if let Some(expr) = &self.expr {
+            expr.print();
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

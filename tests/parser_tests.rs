@@ -6,23 +6,22 @@ use pl0c::LineNumber;
 use pl0c::parser::Parser;
 use pl0c::ast::Node;
 use pl0c::symboltable::SymbolType;
-use pl0c::block::Block;
-use pl0c::statement::BeginStmt;
-use pl0c::io;
-use pl0c::types::Number;
-use pl0c::types::Ident;
-use pl0c::statement::AssignStmt;
-use pl0c::expression::BinOp;
-use pl0c::expression::OddCondition;
-use pl0c::statement::IfStmt;
-use pl0c::program::Program;
-use pl0c::statement::CallStmt;
-use crate::io::Write;
-use pl0c::statement::WhileStatement;
-use crate::io::Read;
-use pl0c::io::WriteStr;
+use pl0c::ast::Block;
+use pl0c::ast::BeginStmt;
+use pl0c::ast::Number;
+use pl0c::ast::Ident;
+use pl0c::ast::AssignStmt;
+use pl0c::ast::BinOp;
+use pl0c::ast::OddCondition;
+use pl0c::ast::IfStmt;
+use pl0c::ast::Program;
+use pl0c::ast::CallStmt;
+use pl0c::ast::Write;
+use pl0c::ast::WhileStatement;
+use pl0c::ast::Read;
+use pl0c::ast::WriteStr;
 use pl0c::ast::Exit;
-use pl0c::expression::RelationalCondition;
+use pl0c::ast::RelationalCondition;
 
 #[test]
 fn test_complex_symbols() -> Pl0Result<()> {
@@ -964,7 +963,7 @@ fn test_complex_calculator_program() -> Pl0Result<()> {
         assert_eq!(block.var_decl.var_decl.len(), 0, "Expected no variables");
         assert_eq!(block.proc_decl.procedurs.len(), 0, "Expected no procedures");
         let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
-        let write = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<crate::io::Write>().expect("Expected Write");
+        let write = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<Write>().expect("Expected Write");
         assert_eq!(write.expr.as_ref().unwrap().as_any().downcast_ref::<Number>().unwrap().value, 0);
         Ok(())
     }

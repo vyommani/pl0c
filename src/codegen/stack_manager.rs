@@ -1,6 +1,6 @@
 use super::IRGenerator;
 use crate::{
-    block::Block,
+    ast::Block,
     errors::Pl0Result,
     symboltable::SymbolLocation,
     code_emitter::{CodeEmitter, StringCodeEmitter},

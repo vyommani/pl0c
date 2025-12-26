@@ -1,6 +1,7 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
+use std::any::Any;
 
 pub struct Ident {
     pub value: String,
@@ -59,5 +60,39 @@ impl Node for Number {
 impl ExpressionNode for Number {
     fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
         visitor.visit_number(self)
+    }
+}
+
+pub struct Variable {
+    pub name: String,
+}
+
+impl Variable {
+    pub fn new(name: &String) -> Self {
+        Self {
+            name: name.to_string(),
+        }
+    }
+}
+
+impl Node for Variable {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<()> {
+        // For Node trait, we ignore the return value
+        let _ = visitor.visit_variable(self);
+        Ok(())
+    }
+
+    fn print(&self) {
+        print!("{}", &self.name);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl ExpressionNode for Variable {
+    fn accept(&self, visitor: &mut dyn ASTVisitor) -> Pl0Result<String> {
+        visitor.visit_variable(self)
     }
 }

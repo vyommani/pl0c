@@ -1,7 +1,5 @@
 use crate::ast::Node;
-use crate::decl::ConstDecl;
-use crate::decl::ProcDecl;
-use crate::decl::VarDecl;
+use crate::ast::{ConstDecl, ProcDecl, VarDecl};
 use crate::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
 

@@ -1,8 +1,6 @@
 use super::IRGenerator;
 use crate::{
-    ast::Node,
-    block::Block,
-    decl::ProcDecl,
+    ast::{Node, Block, ProcDecl},
     errors::{Pl0Result, Pl0Error},
     code_emitter::{CodeEmitter, StringCodeEmitter},
     config::codegen::{WORD_SIZE, STACK_ALIGNMENT},
