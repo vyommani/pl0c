@@ -20,7 +20,7 @@ use crate::symboltable::Symbol;
 use crate::symboltable::SymbolLocation;
 use crate::symboltable::SymbolTable;
 use crate::symboltable::SymbolType;
-use crate::token::Token;
+use crate::frontend::token::Token;
 use crate::ast::Ident;
 use crate::ast::Number;
 use std::collections::HashMap;

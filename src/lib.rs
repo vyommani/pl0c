@@ -9,9 +9,7 @@ pub mod codegen;
 pub mod config;
 pub mod errors;
 pub mod ir_dispatch;
-pub mod lexer;
 pub mod live_range_manager;
-pub mod parser;
 pub mod register_allocator_arm64;
 pub mod register_allocator_common;
 pub mod register_allocator_x86_64;
@@ -20,10 +18,10 @@ pub mod runtime_arm64;
 pub mod runtime_x86_64;
 pub mod spill_manager;
 pub mod symboltable;
-pub mod token;
 pub mod utils;
 pub mod visiters;
 pub mod scope_info;
+pub mod frontend;
 
 pub const VERSION: &str = "0.1.1";
 

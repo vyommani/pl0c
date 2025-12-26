@@ -1,7 +1,7 @@
 use clap::Parser;
 use pl0c::{
     self, assembly_generator::AssemblyGenerator, assembly_generator::TargetArch,
-    codegen::IRGenerator, lexer::scan, read, symboltable::SymbolTable,
+    codegen::IRGenerator, frontend::lexer::scan, read, symboltable::SymbolTable,
 };
 use std::{path::PathBuf, time::Instant, process::Command, fs};
 use pl0c::errors::{Pl0Error, Pl0Result};
@@ -190,7 +190,7 @@ fn lexical_analysis(
     bytes: &str, 
     stats: &mut CompilationStats, 
     verbose: bool
-) -> Pl0Result<(Vec<(pl0c::token::Token, usize)>, SymbolTable)> {
+) -> Pl0Result<(Vec<(pl0c::frontend::token::Token, usize)>, SymbolTable)> {
     let lexer_start = Instant::now();
     let mut state = pl0c::LineNumber::default();
     let mut symbol_table = SymbolTable::new();
@@ -208,13 +208,13 @@ fn lexical_analysis(
 
 // Perform parsing phase
 fn parsing_phase(
-    tokens: &mut Vec<(pl0c::token::Token, usize)>,
+    tokens: &mut Vec<(pl0c::frontend::token::Token, usize)>,
     symbol_table: &mut SymbolTable,
     stats: &mut CompilationStats,
     verbose: bool
 ) -> Pl0Result<Option<Box<dyn pl0c::ast::Node>>> {
     let parser_start = Instant::now();
-    let mut parser = pl0c::parser::Parser::new(tokens);
+    let mut parser = pl0c::frontend::parser::Parser::new(tokens);
     let ast = parser.parse(symbol_table)?;
     stats.parser_time = parser_start.elapsed().as_secs_f64();
     stats.ast_size = calculate_ast_size(&ast);
