@@ -1,6 +1,6 @@
 use pl0c::errors::{Pl0Error, Pl0Result};
 use pl0c::frontend::lexer::{scan};
-use pl0c::symboltable::SymbolTable;
+use pl0c::semantic::symboltable::SymbolTable;
 use pl0c::frontend::token::Token;
 use pl0c::LineNumber;
 

@@ -18,7 +18,7 @@ pub fn handle_assign(gen: &mut IRGenerator, stmt: &AssignStmt) -> Pl0Result<()> 
 
 pub fn handle_call(gen: &mut IRGenerator, call: &CallStmt) -> Pl0Result<()> {
     use super::symbol_helpers;
-    use crate::symboltable::SymbolLocation;
+    use crate::semantic::symboltable::SymbolLocation;
     
     let symbol = symbol_helpers::get_procedure_symbol(gen, &call.identifier, "procedure")?;
     let label = match &symbol.location {

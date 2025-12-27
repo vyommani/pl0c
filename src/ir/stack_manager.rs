@@ -2,7 +2,7 @@ use super::IRGenerator;
 use crate::{
     ast::Block,
     errors::Pl0Result,
-    symboltable::SymbolLocation,
+    semantic::symboltable::SymbolLocation,
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 

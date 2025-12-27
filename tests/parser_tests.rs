@@ -1,11 +1,11 @@
 use pl0c::errors::{Pl0Error, Pl0Result};
 use pl0c::frontend::lexer::scan;
-use pl0c::symboltable::SymbolTable;
+use pl0c::semantic::symboltable::SymbolTable;
 use pl0c::frontend::token::Token;
 use pl0c::LineNumber;
 use pl0c::frontend::parser::Parser;
 use pl0c::ast::Node;
-use pl0c::symboltable::SymbolType;
+use pl0c::semantic::symboltable::SymbolType;
 use pl0c::ast::Block;
 use pl0c::ast::BeginStmt;
 use pl0c::ast::Number;

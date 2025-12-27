@@ -1,5 +1,5 @@
 use crate::ast::Node;
-use crate::visiters::ASTVisitor;
+use crate::semantic::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
 
 pub struct Program {

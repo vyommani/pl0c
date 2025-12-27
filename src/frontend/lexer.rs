@@ -1,5 +1,5 @@
 use crate::LineNumber;
-use crate::{symboltable::SymbolTable, frontend::token::Token};
+use crate::{semantic::symboltable::SymbolTable, frontend::token::Token};
 use std::{iter::Peekable, str::Chars};
 use crate::errors::{Pl0Error, Pl0Result};
 

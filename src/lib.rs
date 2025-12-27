@@ -4,12 +4,10 @@ pub mod ast;
 pub mod ir;
 pub mod config;
 pub mod errors;
-pub mod symboltable;
 pub mod utils;
-pub mod visiters;
-pub mod scope_info;
 pub mod frontend;
 pub mod backend;
+pub mod semantic;
 
 pub const VERSION: &str = "0.1.1";
 

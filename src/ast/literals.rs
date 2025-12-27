@@ -1,5 +1,5 @@
 use crate::ast::{ExpressionNode, Node};
-use crate::visiters::ASTVisitor;
+use crate::semantic::visiters::ASTVisitor;
 use crate::errors::Pl0Result;
 use std::any::Any;
 

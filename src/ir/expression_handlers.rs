@@ -3,7 +3,7 @@ use crate::{
     ast::{ExpressionNode, BinOp, OddCondition, RelationalCondition, Ident, Number, Variable},
     errors::{Pl0Result, Pl0Error},
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
-    symboltable::{SymbolType, SymbolLocation},
+    semantic::symboltable::{SymbolType, SymbolLocation},
 };
 
 pub fn handle_ident(gen: &mut IRGenerator, ident: &Ident) -> Pl0Result<String> {

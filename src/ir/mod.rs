@@ -12,13 +12,13 @@ pub use code_emitter::*;
 
 use crate::{
     ast::Node,
-    symboltable::SymbolTable,
+    semantic::symboltable::SymbolTable,
     errors::{Pl0Result, Pl0Error},
     ast::Program,
-    visiters::ASTVisitor,
+    semantic::visiters::ASTVisitor,
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
-use crate::scope_info::ScopeInfo;
+use crate::semantic::scope_info::ScopeInfo;
 
 pub struct IRGenerator {
     pub(crate) label_counter: i32,

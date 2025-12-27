@@ -1,7 +1,7 @@
-use pl0c::symboltable::Symbol;
-use pl0c::symboltable::SymbolLocation;
-use pl0c::symboltable::SymbolType;
-use pl0c::symboltable::SymbolTable;
+use pl0c::semantic::symboltable::Symbol;
+use pl0c::semantic::symboltable::SymbolLocation;
+use pl0c::semantic::symboltable::SymbolType;
+use pl0c::semantic::symboltable::SymbolTable;
 use pl0c::errors::Pl0Error;
 
 #[cfg(test)]
