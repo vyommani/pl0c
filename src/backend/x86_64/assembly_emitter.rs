@@ -1,10 +1,10 @@
 use crate::ir_dispatch::IROp;
 use crate::{
     assembly_generator::{AssemblyEmitter, RegisterAllocator},
-    register_allocator_common::Register,
-    register_allocator_x86_64::RegisterName,
+    backend::common::register_allocator_common::Register,
+    backend::x86_64::register_allocator::RegisterName,
 };
-use crate::register_allocator_x86_64::X86_64RegisterAllocator;
+use crate::backend::x86_64::register_allocator::X86_64RegisterAllocator;
 
 use crate::errors::Pl0Result;
 use crate::errors::Pl0Error;
@@ -12,7 +12,7 @@ use crate::errors::Pl0Error;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
-use crate::runtime_x86_64::X86_64Runtime;
+use crate::backend::x86_64::runtime::X86_64Runtime;
 use crate::assembly_generator::RuntimeNeeds;
 
 use crate::assembly_generator::DataInfo;

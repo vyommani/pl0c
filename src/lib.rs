@@ -1,7 +1,5 @@
 use std::{fs::File, io::Read, path::Path};
 
-pub mod assembly_emitter_arm64;
-pub mod assembly_emitter_x86_64;
 pub mod assembly_generator;
 pub mod ast;
 pub mod code_emitter;
@@ -9,19 +7,12 @@ pub mod codegen;
 pub mod config;
 pub mod errors;
 pub mod ir_dispatch;
-pub mod live_range_manager;
-pub mod register_allocator_arm64;
-pub mod register_allocator_common;
-pub mod register_allocator_x86_64;
-pub mod register_pool;
-pub mod runtime_arm64;
-pub mod runtime_x86_64;
-pub mod spill_manager;
 pub mod symboltable;
 pub mod utils;
 pub mod visiters;
 pub mod scope_info;
 pub mod frontend;
+pub mod backend;
 
 pub const VERSION: &str = "0.1.1";
 

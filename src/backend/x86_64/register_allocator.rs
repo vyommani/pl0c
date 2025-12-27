@@ -1,5 +1,5 @@
 use crate::assembly_generator::RegisterAllocator;
-use crate::register_allocator_common::{Register, RegisterConstraints};
+use crate::backend::common::register_allocator_common::{Register, RegisterConstraints};
 use std::collections::HashMap;
 use std::fmt;
 use crate::errors::{Pl0Result, Pl0Error};

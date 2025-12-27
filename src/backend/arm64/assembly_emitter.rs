@@ -1,9 +1,9 @@
 use crate::ir_dispatch::IROp;
-use crate::runtime_arm64::Arm64Runtime;
+use crate::backend::arm64::runtime::Arm64Runtime;
 use crate::{
     assembly_generator::{AssemblyEmitter, RegisterAllocator},
-    register_allocator_arm64::{RegisterName, Arm64RegisterAllocator},
-    register_allocator_common::Register,
+    backend::arm64::register_allocator::{RegisterName, Arm64RegisterAllocator},
+    backend::common::register_allocator_common::Register,
     utils::string_utils::write_line,
 };
 use crate::errors::Pl0Result;

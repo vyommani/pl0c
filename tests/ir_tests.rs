@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use pl0c::symboltable::SymbolTable;
-    use pl0c::lexer::scan;
-    use pl0c::parser::Parser;
+    use pl0c::frontend::lexer::scan;
+    use pl0c::frontend::parser::Parser;
     use pl0c::LineNumber;
     use pl0c::codegen::IRGenerator;
     use pl0c::errors::Pl0Result;

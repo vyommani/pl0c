@@ -1,4 +1,4 @@
-use crate::register_allocator_arm64::RegisterName;
+use crate::backend::arm64::register_allocator::RegisterName;
 use crate::Pl0Result;
 
 pub trait CodeEmitter {

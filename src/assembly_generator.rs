@@ -1,7 +1,7 @@
-use crate::assembly_emitter_arm64::Arm64AssemblyEmitter;
-use crate::assembly_emitter_x86_64::X86_64AssemblyEmitter;
-use crate::register_allocator_arm64::Arm64RegisterAllocator;
-use crate::register_allocator_x86_64::X86_64RegisterAllocator;
+use crate::backend::arm64::assembly_emitter::Arm64AssemblyEmitter;
+use crate::backend::x86_64::assembly_emitter::X86_64AssemblyEmitter;
+use crate::backend::arm64::register_allocator::Arm64RegisterAllocator;
+use crate::backend::x86_64::register_allocator::X86_64RegisterAllocator;
 use crate::utils::string_utils::write_line;
 use crate::errors::Pl0Result;
 use crate::errors::Pl0Error;

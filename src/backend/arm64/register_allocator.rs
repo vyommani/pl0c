@@ -3,12 +3,12 @@ use crate::code_emitter::StringCodeEmitter;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write as FmtWrite};
 
-use crate::live_range_manager::LiveRangeManager;
-use crate::register_pool::RegisterPool;
-use crate::spill_manager::SpillManager;
+use crate::backend::common::live_range_manager::LiveRangeManager;
+use crate::backend::common::register_pool::RegisterPool;
+use crate::backend::common::spill_manager::SpillManager;
 use crate::{
     assembly_generator::RegisterAllocator,
-    register_allocator_common::{Register, RegisterConstraints},
+    backend::common::register_allocator_common::{Register, RegisterConstraints},
 };
 use crate::errors::Pl0Result;
 use crate::errors::Pl0Error;
