@@ -2,7 +2,7 @@ use super::IRGenerator;
 use crate::{
     ast::{ExpressionNode, BinOp, OddCondition, RelationalCondition, Ident, Number, Variable},
     errors::{Pl0Result, Pl0Error},
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
     symboltable::{SymbolType, SymbolLocation},
 };
 

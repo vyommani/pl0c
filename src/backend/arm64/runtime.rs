@@ -1,4 +1,4 @@
-use crate::assembly_generator::RegisterAllocator;
+use crate::backend::assembly_generator::RegisterAllocator;
 use crate::utils::string_utils::write_line;
 use crate::errors::Pl0Result;
 pub struct Arm64Runtime;

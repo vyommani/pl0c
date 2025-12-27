@@ -4,6 +4,11 @@ pub mod procedure_handlers;
 pub mod symbol_helpers;
 pub mod ir_emitter;
 pub mod stack_manager;
+pub mod ir_dispatch;
+pub mod code_emitter;
+
+pub use ir_dispatch::*;
+pub use code_emitter::*;
 
 use crate::{
     ast::Node,
@@ -11,7 +16,7 @@ use crate::{
     errors::{Pl0Result, Pl0Error},
     ast::Program,
     visiters::ASTVisitor,
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 use crate::scope_info::ScopeInfo;
 

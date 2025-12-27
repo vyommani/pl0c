@@ -3,7 +3,7 @@ use crate::{
     ast::Block,
     errors::Pl0Result,
     symboltable::SymbolLocation,
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn initialize_local_variables(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {

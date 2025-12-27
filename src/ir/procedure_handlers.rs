@@ -2,7 +2,7 @@ use super::IRGenerator;
 use crate::{
     ast::{Node, Block, ProcDecl},
     errors::{Pl0Result, Pl0Error},
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
     config::codegen::{WORD_SIZE, STACK_ALIGNMENT},
 };
 

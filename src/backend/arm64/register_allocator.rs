@@ -1,5 +1,5 @@
-use crate::code_emitter::CodeEmitter;
-use crate::code_emitter::StringCodeEmitter;
+use crate::ir::code_emitter::CodeEmitter;
+use crate::ir::code_emitter::StringCodeEmitter;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write as FmtWrite};
 
@@ -7,7 +7,7 @@ use crate::backend::common::live_range_manager::LiveRangeManager;
 use crate::backend::common::register_pool::RegisterPool;
 use crate::backend::common::spill_manager::SpillManager;
 use crate::{
-    assembly_generator::RegisterAllocator,
+    backend::assembly_generator::RegisterAllocator,
     backend::common::register_allocator_common::{Register, RegisterConstraints},
 };
 use crate::errors::Pl0Result;

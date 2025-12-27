@@ -1,4 +1,4 @@
-use crate::assembly_generator::RegisterAllocator;
+use crate::backend::assembly_generator::RegisterAllocator;
 use crate::backend::common::register_allocator_common::{Register, RegisterConstraints};
 use std::collections::HashMap;
 use std::fmt;

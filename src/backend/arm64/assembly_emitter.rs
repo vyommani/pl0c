@@ -1,7 +1,7 @@
-use crate::ir_dispatch::IROp;
+use crate::ir::ir_dispatch::IROp;
 use crate::backend::arm64::runtime::Arm64Runtime;
 use crate::{
-    assembly_generator::{AssemblyEmitter, RegisterAllocator},
+    backend::assembly_generator::{AssemblyEmitter, RegisterAllocator},
     backend::arm64::register_allocator::{RegisterName, Arm64RegisterAllocator},
     backend::common::register_allocator_common::Register,
     utils::string_utils::write_line,
@@ -16,10 +16,10 @@ use std::{
 use crate::config::register_allocation::RESERVED_REG;
 use crate::config::arm64::MAIN_WRAPPER;
 use crate::config::arm64::EXIT_WRAPPER;
-use crate::assembly_generator::RuntimeNeeds;
-use crate::assembly_generator::ProcContext;
-use crate::assembly_generator::DataInfo;
-use crate::assembly_generator::TargetArch;
+use crate::backend::assembly_generator::RuntimeNeeds;
+use crate::backend::assembly_generator::ProcContext;
+use crate::backend::assembly_generator::DataInfo;
+use crate::backend::assembly_generator::TargetArch;
 pub struct Arm64AssemblyEmitter;
 
 impl AssemblyEmitter for Arm64AssemblyEmitter {

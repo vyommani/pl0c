@@ -1,6 +1,6 @@
 use clap::Parser;
 use pl0c::{
-    self, assembly_generator::AssemblyGenerator, assembly_generator::TargetArch,
+    self, backend::assembly_generator::AssemblyGenerator, backend::assembly_generator::TargetArch,
     ir::IRGenerator, frontend::lexer::scan, read, symboltable::SymbolTable,
 };
 use std::{path::PathBuf, time::Instant, process::Command, fs};

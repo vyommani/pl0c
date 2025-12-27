@@ -7,5 +7,14 @@ pub mod common;
 
 // Re-export commonly used types
 pub use common::*;
-//pub use x86_64::*;
-//pub use arm64::*;
+pub mod assembly_generator;
+
+pub use assembly_generator::{
+    AssemblyGenerator,
+    TargetArch,
+    RegisterAllocator,
+    AssemblyEmitter,
+    DataInfo,
+    RuntimeNeeds,
+    ProcContext,
+};

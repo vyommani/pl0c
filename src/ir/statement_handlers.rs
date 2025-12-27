@@ -2,7 +2,7 @@ use super::IRGenerator;
 use crate::{
     ast::{ExpressionNode, AssignStmt, BeginStmt, CallStmt, IfStmt,WhileStatement, Read, Write, WriteStr, ConstDecl, VarDecl,},
     errors::{Pl0Result, Pl0Error},
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn handle_assign(gen: &mut IRGenerator, stmt: &AssignStmt) -> Pl0Result<()> {

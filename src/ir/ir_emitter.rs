@@ -1,7 +1,7 @@
 use super::IRGenerator;
 use crate::{
     errors::{Pl0Result, Pl0Error},
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn emit_binary_op(

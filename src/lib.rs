@@ -1,12 +1,9 @@
 use std::{fs::File, io::Read, path::Path};
 
-pub mod assembly_generator;
 pub mod ast;
-pub mod code_emitter;
 pub mod ir;
 pub mod config;
 pub mod errors;
-pub mod ir_dispatch;
 pub mod symboltable;
 pub mod utils;
 pub mod visiters;

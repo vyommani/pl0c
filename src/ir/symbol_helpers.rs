@@ -2,7 +2,7 @@ use super::IRGenerator;
 use crate::{
     symboltable::{Symbol, SymbolLocation, SymbolType},
     errors::{Pl0Result, Pl0Error},
-    code_emitter::{CodeEmitter, StringCodeEmitter},
+    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn get_symbol_with_type<'a>(

@@ -1,6 +1,6 @@
-use crate::ir_dispatch::IROp;
+use crate::ir::ir_dispatch::IROp;
 use crate::{
-    assembly_generator::{AssemblyEmitter, RegisterAllocator},
+    backend::assembly_generator::{AssemblyEmitter, RegisterAllocator},
     backend::common::register_allocator_common::Register,
     backend::x86_64::register_allocator::RegisterName,
 };
@@ -13,10 +13,10 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
 use crate::backend::x86_64::runtime::X86_64Runtime;
-use crate::assembly_generator::RuntimeNeeds;
+use crate::backend::assembly_generator::RuntimeNeeds;
 
-use crate::assembly_generator::DataInfo;
-use crate::assembly_generator::TargetArch;
+use crate::backend::assembly_generator::DataInfo;
+use crate::backend::assembly_generator::TargetArch;
 pub struct X86_64AssemblyEmitter;
 
 struct StackAnalyzer {
