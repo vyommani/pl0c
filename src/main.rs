@@ -1,7 +1,7 @@
 use clap::Parser;
 use pl0c::{
     self, assembly_generator::AssemblyGenerator, assembly_generator::TargetArch,
-    codegen::IRGenerator, frontend::lexer::scan, read, symboltable::SymbolTable,
+    ir::IRGenerator, frontend::lexer::scan, read, symboltable::SymbolTable,
 };
 use std::{path::PathBuf, time::Instant, process::Command, fs};
 use pl0c::errors::{Pl0Error, Pl0Result};

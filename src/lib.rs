@@ -3,7 +3,7 @@ use std::{fs::File, io::Read, path::Path};
 pub mod assembly_generator;
 pub mod ast;
 pub mod code_emitter;
-pub mod codegen;
+pub mod ir;
 pub mod config;
 pub mod errors;
 pub mod ir_dispatch;

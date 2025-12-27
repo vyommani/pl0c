@@ -4,7 +4,7 @@ mod tests {
     use pl0c::frontend::lexer::scan;
     use pl0c::frontend::parser::Parser;
     use pl0c::LineNumber;
-    use pl0c::codegen::IRGenerator;
+    use pl0c::ir::IRGenerator;
     use pl0c::errors::Pl0Result;
     use pl0c::errors::Pl0Error;
 
