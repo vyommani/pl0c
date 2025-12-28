@@ -20,7 +20,7 @@ impl<'a> Lexer<'a> {
         let mut tokens = Vec::new();
         while self.chars.peek().is_some() {
             self.skip_whitespace_and_comments()?;
-            if let Some(&ch) = self.chars.peek() {
+            if let Some(&_ch) = self.chars.peek() {
                 let line = self.state.line;
                 let token = self.scan_token()?;
                 if let Some(token) = token {

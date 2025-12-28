@@ -110,7 +110,8 @@ impl Node for ConstDecl {
             } else {
                 print!(", ");
             }
-            if let (name, value) = tuple {
+            let (name, value) = tuple;
+            {
                 print!("{} = {}", name, value);
             }
         }

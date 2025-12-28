@@ -1,7 +1,7 @@
 use crate::ir::code_emitter::CodeEmitter;
 use crate::ir::code_emitter::StringCodeEmitter;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Write as FmtWrite};
+use std::fmt::{self};
 
 use crate::backend::common::live_range_manager::LiveRangeManager;
 use crate::backend::common::register_pool::RegisterPool;

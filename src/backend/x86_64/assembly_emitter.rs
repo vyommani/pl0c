@@ -161,7 +161,7 @@ impl X86_64AssemblyEmitter {
     fn process_ir_lines(&self, ir: &[String], allocator: &mut dyn RegisterAllocator, proc_output: &mut String,
         main_output: &mut String, stack_analyzer: &StackAnalyzer, data_info: &DataInfo) -> Pl0Result<()> {
         let mut in_proc = false;
-        let mut current_proc = None;
+        //let mut current_proc = None;
         let mut proc_stack = Vec::new();
         for (idx, line) in ir.iter().enumerate() {
             let line = line.trim();
@@ -178,7 +178,7 @@ impl X86_64AssemblyEmitter {
                 let next_line = ir.get(idx + 1).map(|s| s.trim()).unwrap_or("");
                 if next_line.starts_with("proc_enter") {
                     in_proc = true;
-                    current_proc = Some(label.to_string());
+                    //current_proc = Some(label.to_string());
                     proc_stack.push(label.to_string());
                     proc_output.push_str(&format!("{}:\n", label));
                 } else {

@@ -168,14 +168,14 @@ impl SymbolTable {
     }
 
     pub fn get_with_distance(&self, name: &str, current_level: usize) -> Option<(&Symbol, usize)> {
-        let mut distance = 0;
+        //let mut distance = 0;
         for (_scope_idx, scope) in self.scopes.iter().enumerate().rev() {
             if let Some(symbol) = scope.get(name) {
                 // Distance = current_level - symbol.level
                 let d = current_level.saturating_sub(symbol.level);
                 return Some((symbol, d));
             }
-            distance += 1;
+            //distance += 1;
         }
         None
     }
