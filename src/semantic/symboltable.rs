@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::Pl0Result;
-use crate::Pl0Error;
+use crate::utils::Pl0Result;
+use crate::utils::Pl0Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SymbolType {

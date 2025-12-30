@@ -13,7 +13,7 @@ pub use code_emitter::*;
 use crate::{
     ast::Node,
     semantic::symboltable::SymbolTable,
-    errors::{Pl0Result, Pl0Error},
+    utils::errors::{Pl0Result, Pl0Error},
     ast::Program,
     semantic::visiters::ASTVisitor,
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},

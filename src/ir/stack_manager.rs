@@ -1,7 +1,7 @@
 use super::IRGenerator;
 use crate::{
     ast::Block,
-    errors::Pl0Result,
+    utils::errors::Pl0Result,
     semantic::symboltable::SymbolLocation,
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };

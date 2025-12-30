@@ -4,7 +4,7 @@ use pl0c::{
     ir::IRGenerator, frontend::lexer::scan, read, semantic::symboltable::SymbolTable,
 };
 use std::{path::PathBuf, time::Instant, process::Command, fs};
-use pl0c::errors::{Pl0Error, Pl0Result};
+use pl0c::utils::errors::{Pl0Error, Pl0Result};
 
 #[derive(Parser)]
 #[command(
@@ -220,7 +220,7 @@ fn parsing_phase(
     stats.ast_size = calculate_ast_size(&ast);
 
     if verbose {
-        println!("✓ Parsing completed in {:.3}s", stats.parser_time);
+        println!(" Parsing completed in {:.3}s", stats.parser_time);
     }
 
     Ok(ast)
@@ -242,7 +242,7 @@ fn code_generation_phase(
 
     if verbose {
         println!(" Code generation completed in {:.3}s", stats.codegen_time);
-        println!("  Generated {} IR instructions", stats.ir_instructions);
+        println!(" Generated {} IR instructions", stats.ir_instructions);
     }
 
     Ok(ir_output)

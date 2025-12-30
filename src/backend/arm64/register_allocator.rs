@@ -10,8 +10,8 @@ use crate::{
     backend::assembly_generator::RegisterAllocator,
     backend::common::register_allocator_common::{Register, RegisterConstraints},
 };
-use crate::errors::Pl0Result;
-use crate::errors::Pl0Error;
+use crate::utils::errors::Pl0Result;
+use crate::utils::errors::Pl0Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {

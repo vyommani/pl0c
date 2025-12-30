@@ -18,7 +18,7 @@ use crate::ast::IfStmt;
 use crate::ast::WhileStatement;
 use crate::ast::Ident;
 use crate::ast::Number;
-use crate::errors:: Pl0Result;
+use crate::utils::errors:: Pl0Result;
 
 pub trait ASTVisitor {
     fn visit_ident(&mut self, ident: &Ident) -> Pl0Result<String>;

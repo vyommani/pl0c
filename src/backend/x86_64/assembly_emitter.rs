@@ -6,8 +6,8 @@ use crate::{
 };
 use crate::backend::x86_64::register_allocator::X86_64RegisterAllocator;
 
-use crate::errors::Pl0Result;
-use crate::errors::Pl0Error;
+use crate::utils::errors::Pl0Result;
+use crate::utils::errors::Pl0Error;
 
 use regex::Regex;
 use std::collections::{HashMap, HashSet};

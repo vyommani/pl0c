@@ -1,7 +1,7 @@
 use crate::backend::assembly_generator::RegisterAllocator;
 use crate::backend::common::register_allocator_common::Register;
 use crate::backend::x86_64::register_allocator::RegisterName;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 
 pub struct X86_64Runtime;
 

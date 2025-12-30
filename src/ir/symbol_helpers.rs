@@ -1,7 +1,7 @@
 use super::IRGenerator;
 use crate::{
     semantic::symboltable::{Symbol, SymbolLocation, SymbolType},
-    errors::{Pl0Result, Pl0Error},
+    utils::errors::{Pl0Result, Pl0Error},
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 

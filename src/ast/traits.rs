@@ -22,7 +22,7 @@
 */
 
 use crate::semantic::visiters::ASTVisitor;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 use std::any::Any;
 
 pub trait Node {

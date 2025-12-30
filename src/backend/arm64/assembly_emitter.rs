@@ -4,18 +4,18 @@ use crate::{
     backend::assembly_generator::{AssemblyEmitter, RegisterAllocator},
     backend::arm64::register_allocator::{RegisterName, Arm64RegisterAllocator},
     backend::common::register_allocator_common::Register,
-    utils::string_utils::write_line,
+    utils::write_line,
 };
-use crate::errors::Pl0Result;
-use crate::errors::Pl0Error;
+use crate::utils::errors::Pl0Result;
+use crate::utils::errors::Pl0Error;
 
 use regex::Regex;
 use std::{
     collections::HashMap,
 };
-use crate::config::register_allocation::RESERVED_REG;
-use crate::config::arm64::MAIN_WRAPPER;
-use crate::config::arm64::EXIT_WRAPPER;
+use crate::utils::config::register_allocation::RESERVED_REG;
+use crate::utils::config::arm64::MAIN_WRAPPER;
+use crate::utils::config::arm64::EXIT_WRAPPER;
 use crate::backend::assembly_generator::RuntimeNeeds;
 use crate::backend::assembly_generator::ProcContext;
 use crate::backend::assembly_generator::DataInfo;

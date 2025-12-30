@@ -1,5 +1,5 @@
-use crate::{errors::Pl0Error, errors::Pl0Result, config::parser::INITIAL_STACK_OFFSET};
-use crate::config::codegen::WORD_SIZE;
+use crate::utils::{errors::Pl0Error, errors::Pl0Result, config::parser::INITIAL_STACK_OFFSET};
+use crate::utils::config::codegen::WORD_SIZE;
 
 #[derive(Debug, Clone)]
 pub struct ScopeInfo {

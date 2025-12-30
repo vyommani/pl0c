@@ -25,11 +25,11 @@ use crate::ast::Ident;
 use crate::ast::Number;
 use std::collections::HashMap;
 use std::slice::Iter;
-use crate::errors::Pl0Error;
+use crate::utils::errors::Pl0Error;
 
-use crate::config::parser::rename_identifier;
-use crate::config::parser::get_renamed_identifier;
-use crate::config::parser::INITIAL_STACK_OFFSET;
+use crate::utils::config::parser::rename_identifier;
+use crate::utils::config::parser::get_renamed_identifier;
+use crate::utils::config::parser::INITIAL_STACK_OFFSET;
 
 const STACK_SLOT_SIZE: usize = 8;
 

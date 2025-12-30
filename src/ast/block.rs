@@ -1,7 +1,7 @@
 use crate::ast::Node;
 use crate::ast::{ConstDecl, ProcDecl, VarDecl};
 use crate::semantic::visiters::ASTVisitor;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 
 pub struct Block {
     pub const_decl: ConstDecl,

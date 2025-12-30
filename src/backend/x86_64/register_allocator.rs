@@ -2,7 +2,7 @@ use crate::backend::assembly_generator::RegisterAllocator;
 use crate::backend::common::register_allocator_common::{Register, RegisterConstraints};
 use std::collections::HashMap;
 use std::fmt;
-use crate::errors::{Pl0Result, Pl0Error};
+use crate::utils::errors::{Pl0Result, Pl0Error};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterName {

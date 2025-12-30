@@ -1,9 +1,9 @@
 use super::IRGenerator;
 use crate::{
     ast::{Node, Block, ProcDecl},
-    errors::{Pl0Result, Pl0Error},
+    utils::errors::{Pl0Result, Pl0Error},
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
-    config::codegen::{WORD_SIZE, STACK_ALIGNMENT},
+    utils::config::codegen::{WORD_SIZE, STACK_ALIGNMENT},
 };
 
 pub fn handle_proc_decl(gen: &mut IRGenerator, expr: &ProcDecl) -> Pl0Result<()> {

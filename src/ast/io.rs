@@ -1,6 +1,6 @@
 use crate::ast::{ExpressionNode, Node};
 use crate::semantic::visiters::ASTVisitor;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 
 pub struct Write {
     pub expr: Option<Box<dyn ExpressionNode>>,

@@ -1,6 +1,6 @@
 use crate::ast::Node;
 use crate::semantic::visiters::ASTVisitor;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 
 pub struct Program {
     pub block: Option<Box<dyn Node>>,

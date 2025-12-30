@@ -1,7 +1,7 @@
 use super::IRGenerator;
 use crate::{
     ast::{ExpressionNode, AssignStmt, BeginStmt, CallStmt, IfStmt,WhileStatement, Read, Write, WriteStr, ConstDecl, VarDecl,},
-    errors::{Pl0Result, Pl0Error},
+    utils::errors::{Pl0Result, Pl0Error},
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 

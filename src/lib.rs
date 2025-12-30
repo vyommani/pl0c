@@ -2,8 +2,6 @@ use std::{fs::File, io::Read, path::Path};
 
 pub mod ast;
 pub mod ir;
-pub mod config;
-pub mod errors;
 pub mod utils;
 pub mod frontend;
 pub mod backend;
@@ -21,7 +19,7 @@ impl Default for LineNumber {
     }
 }
 
-use crate::errors::{Pl0Error, Pl0Result};
+use crate::utils::errors::{Pl0Error, Pl0Result};
 
 pub fn read(filename: &Path) -> Pl0Result<String> {
     let path = Path::new(filename);

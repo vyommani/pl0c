@@ -1,6 +1,6 @@
 use super::IRGenerator;
 use crate::{
-    errors::{Pl0Result, Pl0Error},
+    utils::errors::{Pl0Result, Pl0Error},
     ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 

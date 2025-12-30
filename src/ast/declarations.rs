@@ -1,6 +1,6 @@
 use crate::ast::Node;
 use crate::semantic::visiters::ASTVisitor;
-use crate::errors::Pl0Result;
+use crate::utils::errors::Pl0Result;
 
 pub struct ProcDecl {
     pub procedurs: Vec<(String, Option<Box<dyn Node>>)>,

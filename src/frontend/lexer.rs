@@ -1,7 +1,7 @@
 use crate::LineNumber;
 use crate::{semantic::symboltable::SymbolTable, frontend::token::Token};
 use std::{iter::Peekable, str::Chars};
-use crate::errors::{Pl0Error, Pl0Result};
+use crate::utils::errors::{Pl0Error, Pl0Result};
 
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
