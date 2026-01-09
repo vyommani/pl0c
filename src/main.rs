@@ -101,7 +101,7 @@ impl CompilationStats {
 
 // Supported operating systems
 #[derive(Debug, PartialEq, Clone)]
-enum OperatingSystem { MacOS, Linux, Windows }
+enum OperatingSystem { MacOS, Linux, Windows, FreeBSD }
 
 impl OperatingSystem {
     fn detect() -> Pl0Result<Self> {
@@ -109,6 +109,7 @@ impl OperatingSystem {
             "macos" => Ok(OperatingSystem::MacOS),
             "linux" => Ok(OperatingSystem::Linux),
             "windows" => Ok(OperatingSystem::Windows),
+            "freebsd" => Ok(OperatingSystem::FreeBSD),
             other => Err(Pl0Error::compilation_error(
                 "os detection",
                 format!("Unsupported operating system: {}", other)
@@ -121,6 +122,7 @@ impl OperatingSystem {
             OperatingSystem::MacOS => &["x86_64", "arm64"],
             OperatingSystem::Linux => &["x86_64"],
             OperatingSystem::Windows => &["x86_64"],
+            OperatingSystem::FreeBSD => &["x86_64"],
         }
     }
 }
@@ -404,6 +406,29 @@ fn assemble_and_link(
                 return Err(Pl0Error::compilation_error(
                     "assembly",
                     format!("Assembler failed: {}", 
+                           String::from_utf8_lossy(&as_result.unwrap().stderr))
+                ));
+            };
+
+            (as_result, link_result)
+        }
+        OperatingSystem::FreeBSD => {
+            let as_result = Command::new("as")
+                .arg("--64")
+                .arg("-o").arg(obj_file)
+                .arg(asm_file)
+                .output();
+
+            let link_result = if as_result.is_ok() && as_result.as_ref().unwrap().status.success() {
+                Command::new("ld")
+                    .arg("-m").arg("elf_x86_64_fbsd")
+                    .arg(obj_file)
+                    .arg("-o").arg(exe_file)
+                    .output()
+            } else {
+                return Err(Pl0Error::compilation_error(
+                    "assembly",
+                    format!("Assembler failed: {}",
                            String::from_utf8_lossy(&as_result.unwrap().stderr))
                 ));
             };
