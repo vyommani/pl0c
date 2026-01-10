@@ -413,15 +413,16 @@ fn assemble_and_link(
             (as_result, link_result)
         }
         OperatingSystem::FreeBSD => {
-            let as_result = Command::new("as")
-                .arg("--64")
+            let as_result = Command::new("nasm")
+                .arg("-f").arg("elf64")
                 .arg("-o").arg(obj_file)
                 .arg(asm_file)
                 .output();
 
             let link_result = if as_result.is_ok() && as_result.as_ref().unwrap().status.success() {
                 Command::new("ld")
-                    .arg("-m").arg("elf_x86_64_fbsd")
+                    .arg("-m").arg("elf_amd64_fbsd")
+                    .arg("-static")
                     .arg(obj_file)
                     .arg("-o").arg(exe_file)
                     .output()
@@ -460,6 +461,7 @@ fn assemble_and_link(
 
     // Clean up object file
     let _ = fs::remove_file(obj_file);
+    //let _ = fs::remove_file(asm_file);
 
     let linking_time = start_time.elapsed().as_secs_f64();
     if verbose {
