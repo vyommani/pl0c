@@ -2,6 +2,7 @@ use crate::backend::assembly_generator::RegisterAllocator;
 use crate::backend::common::register_allocator_common::Register;
 use crate::backend::x86_64::register_allocator::RegisterName;
 use crate::utils::errors::Pl0Result;
+use crate::backend::common::TargetOS;
 
 pub struct X86_64Runtime;
 
@@ -51,7 +52,7 @@ impl X86_64Runtime {
         Ok(())
     }
 
-    pub fn emit_write_int_routine(output: &mut String) -> Pl0Result<()> {
+    pub fn emit_write_int_routine(output: &mut String, target_os: &dyn TargetOS) -> Pl0Result<()> {
         output.push_str("section .text\n");
         output.push_str("write_int:\n");
         output.push_str("    push rbp\n");
@@ -72,10 +73,10 @@ impl X86_64Runtime {
         output.push_str("    jne .check_negative\n");
         output.push_str("    mov byte [rsi], '0'\n");
         output.push_str("    mov rdx, 1\n");
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    syscall\n");
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    mov rsi, newline\n");
         output.push_str("    mov rdx, 1\n");
@@ -101,10 +102,10 @@ impl X86_64Runtime {
         output.push_str("    inc r9\n"); // Include '-' in count
         output.push_str(".print:\n");
         output.push_str("    mov rdx, r9\n"); // Use digit count for write length
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    syscall\n");
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    mov rsi, newline\n");
         output.push_str("    mov rdx, 1\n");
@@ -122,7 +123,7 @@ impl X86_64Runtime {
         Ok(())
     }
 
-    pub fn emit_read_int_routine(output: &mut String) -> Pl0Result<()> {
+    pub fn emit_read_int_routine(output: &mut String, target_os: &dyn TargetOS) -> Pl0Result<()> {
         output.push_str("read_int:\n");
         output.push_str("    push rbp\n");
         output.push_str("    mov rbp, rsp\n");
@@ -190,7 +191,7 @@ impl X86_64Runtime {
         output.push_str("    pop rbp\n");
         output.push_str("    ret\n");
         output.push_str(".read_char:\n");
-        output.push_str("    mov rax, 0\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_read()));
         output.push_str("    mov rdi, 0\n");
         output.push_str("    lea rsi, [rbp - 8]\n");
         output.push_str("    mov rdx, 1\n");
@@ -198,8 +199,8 @@ impl X86_64Runtime {
         output.push_str("    ret\n");
         Ok(())
     }
-    
-    pub fn emit_write_str_routine(output: &mut String) -> Pl0Result<()> {
+
+    pub fn emit_write_str_routine(output: &mut String, target_os: &dyn TargetOS) -> Pl0Result<()> {
         output.push_str("section .text\n");
         output.push_str("write_str:\n");
         output.push_str("    push rbp\n");
@@ -217,11 +218,11 @@ impl X86_64Runtime {
         output.push_str("    inc rcx\n");
         output.push_str("    jmp .count_loop\n");
         output.push_str(".print:\n");
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    mov rdx, rcx\n");
         output.push_str("    syscall\n");
-        output.push_str("    mov rax, 1\n");
+        output.push_str(&format!("    mov rax, {}\n", target_os.syscall_write()));
         output.push_str("    mov rdi, 1\n");
         output.push_str("    mov rsi, newline\n");
         output.push_str("    mov rdx, 1\n");

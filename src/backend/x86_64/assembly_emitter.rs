@@ -17,7 +17,17 @@ use crate::backend::assembly_generator::RuntimeNeeds;
 
 use crate::backend::assembly_generator::DataInfo;
 use crate::backend::assembly_generator::TargetArch;
-pub struct X86_64AssemblyEmitter;
+use crate::backend::common::target_os::TargetOS;
+
+pub struct X86_64AssemblyEmitter {
+    target_os: Box<dyn TargetOS>,
+}
+
+impl X86_64AssemblyEmitter {
+    pub fn new(target_os: Box<dyn TargetOS>) -> Self {
+        Self { target_os }
+    }
+}
 
 struct StackAnalyzer {
     main_stack_vars: HashSet<String>,
@@ -110,7 +120,7 @@ impl AssemblyEmitter for X86_64AssemblyEmitter {
         let mut main_output = String::new();
         let stack_analyzer = StackAnalyzer::new(ir, allocator);
         self.process_ir_lines(ir, allocator, &mut proc_output, &mut main_output, &stack_analyzer, &data_info)?;
-        let new_main_output = Self::emit_main_section(&main_output, &stack_analyzer)?;
+        let new_main_output = Self::emit_main_section(&main_output, &stack_analyzer, self.target_os.as_ref())?;
         let mut footer = String::new();
         self.emit_footer_conditional(&mut footer, &data_info.runtime_needs)?;
         let final_output = Self::assemble_final_output(&data_output, &new_main_output, &proc_output, &footer)?;
@@ -211,7 +221,7 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_main_section(main_output: &str, stack_analyzer: &StackAnalyzer) -> Pl0Result<String> {
+    fn emit_main_section(main_output: &str, stack_analyzer: &StackAnalyzer, target_os: &dyn TargetOS) -> Pl0Result<String> {
         let mut new_main_output = String::new();
         new_main_output.push_str("section .text\n");
         new_main_output.push_str("global _start\n");
@@ -219,7 +229,7 @@ impl X86_64AssemblyEmitter {
         new_main_output.push_str("_start:\n");
         new_main_output.push_str("    call main\n");
         new_main_output.push_str("    mov rdi, rax\n");
-        new_main_output.push_str("    mov rax, 60\n");
+        new_main_output.push_str(&format!("    mov rax, {}\n", target_os.syscall_exit()));
         new_main_output.push_str("    syscall\n");
         new_main_output.push_str("    ret\n");
         new_main_output.push_str("main:\n");
@@ -333,13 +343,13 @@ impl X86_64AssemblyEmitter {
 
     fn emit_footer_conditional(&self, output: &mut String, runtime_needs: &RuntimeNeeds) -> Pl0Result<()> {
         if runtime_needs.write_int {
-            X86_64Runtime::emit_write_int_routine(output)?;
+            X86_64Runtime::emit_write_int_routine(output, self.target_os.as_ref())?;
         }
         if runtime_needs.read_int {
-            X86_64Runtime::emit_read_int_routine(output)?;
+            X86_64Runtime::emit_read_int_routine(output, self.target_os.as_ref())?;
         }
         if runtime_needs.write_str {
-            X86_64Runtime::emit_write_str_routine(output)?;
+            X86_64Runtime::emit_write_str_routine(output, self.target_os.as_ref())?;
         }
         Ok(())
     }

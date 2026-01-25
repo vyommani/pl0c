@@ -8,6 +8,7 @@ use crate::utils::errors::Pl0Error;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
+use crate::backend::common::target_os::TargetOS;
 
 pub struct RuntimeNeeds {
     pub write_int: bool,
@@ -215,6 +216,7 @@ impl ProcContext {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TargetArch {
     X86_64,
     ARM64,
@@ -239,16 +241,17 @@ pub struct AssemblyGenerator {
     emitter: Box<dyn AssemblyEmitter>,
     assembly_output: String,
     target: TargetArch,
+    target_os: Box<dyn TargetOS>,
 }
 
 impl AssemblyGenerator {
-    pub fn new(target: TargetArch) -> Self {
+    pub fn new(target: TargetArch, target_os: Box<dyn TargetOS>) -> Self {
         let allocator: Box<dyn RegisterAllocator> = match target {
             TargetArch::X86_64 => Box::new(X86_64RegisterAllocator::new()),
             TargetArch::ARM64 => Box::new(Arm64RegisterAllocator::new()),
         };
         let emitter: Box<dyn AssemblyEmitter> = match target {
-            TargetArch::X86_64 => Box::new(X86_64AssemblyEmitter),
+            TargetArch::X86_64 => Box::new(X86_64AssemblyEmitter::new(target_os.clone_box())),
             TargetArch::ARM64 => Box::new(Arm64AssemblyEmitter),
         };
         Self {
@@ -256,6 +259,7 @@ impl AssemblyGenerator {
             allocator,
             emitter,
             assembly_output: String::new(),
+            target_os,
         }
     }
 

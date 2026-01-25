@@ -1,6 +1,7 @@
 use clap::Parser;
 use pl0c::{
     self, backend::assembly_generator::AssemblyGenerator, backend::assembly_generator::TargetArch,
+    backend::common::target_os::{TargetOS, Linux, FreeBSD, MacOS},
     ir::IRGenerator, frontend::lexer::scan, read, semantic::symboltable::SymbolTable,
 };
 use std::{path::PathBuf, time::Instant, process::Command, fs};
@@ -33,6 +34,9 @@ struct Cli {
     // Target architecture (e.g., x86_64, arm64)
     #[arg(long, value_parser = validate_target_arch)]
     target: Option<String>,
+
+    #[arg(long, value_parser = validate_target_os)]
+    target_os: Option<String>,
 
     // Output file path (defaults to input file with .s extension)
     #[arg(short, long)]
@@ -135,6 +139,14 @@ fn validate_target_arch(s: &str) -> Result<String, String> {
     }
 }
 
+// Validate target OS argument
+fn validate_target_os(s: &str) -> Result<String, String> {
+    match s {
+        "linux" | "freebsd" | "macos" => Ok(s.to_string()),
+        _ => Err(format!("Unsupported target OS: {}. Supported: linux, freebsd, macos", s)),
+    }
+}
+
 // Print error message and exit with error code
 fn fatal(msg: &str) -> ! {
     eprintln!("Error: {}", msg);
@@ -160,6 +172,34 @@ fn detect_target_arch(target: &Option<String>) -> Pl0Result<TargetArch> {
                 Err(Pl0Error::compilation_error(
                     "target detection", 
                     "Unsupported host architecture".to_string()
+                ))
+            }
+        }
+    }
+}
+
+// Detect target OS based on user input or host system
+fn detect_target_os(target_os: &Option<String>) -> Pl0Result<Box<dyn TargetOS>> {
+    match target_os.as_deref() {
+        Some("linux") => Ok(Box::new(Linux)),
+        Some("freebsd") => Ok(Box::new(FreeBSD)),
+        Some("macos") => Ok(Box::new(MacOS)),
+        Some(other) => Err(Pl0Error::compilation_error(
+            "OS detection",
+            format!("Unsupported target OS: {}", other)
+        )),
+        None => {
+            // Auto-detect host OS
+            if cfg!(target_os = "linux") {
+                Ok(Box::new(Linux))
+            } else if cfg!(target_os = "freebsd") {
+                Ok(Box::new(FreeBSD))
+            } else if cfg!(target_os = "macos") {
+                Ok(Box::new(MacOS))
+            } else {
+                Err(Pl0Error::compilation_error(
+                    "OS detection",
+                    "Unsupported host OS. Please specify --target-os explicitly".to_string()
                 ))
             }
         }
@@ -254,11 +294,12 @@ fn code_generation_phase(
 fn assembly_generation_phase(
     ir_output: &str,
     target_arch: TargetArch,
+    target_os: Box<dyn TargetOS>,
     stats: &mut CompilationStats,
     verbose: bool
 ) -> Pl0Result<String> {
     let assembly_start = Instant::now();
-    let mut assembly_gen = AssemblyGenerator::new(target_arch);
+    let mut assembly_gen = AssemblyGenerator::new(target_arch, target_os);
     assembly_gen.emit_assembly(ir_output)?;
     let assembly_output = assembly_gen.get_output().to_string();
     stats.assembly_time = assembly_start.elapsed().as_secs_f64();
@@ -292,6 +333,22 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationSt
     // Determine target architecture
     let target_arch = detect_target_arch(&args.target)?;
 
+    // Determine target OS (auto-detect if not specified)
+    let target_os = detect_target_os(&args.target_os)?;
+    if args.verbose {
+        let os_name = args.target_os.as_deref().unwrap_or_else(|| {
+            if cfg!(target_os = "linux") { "linux (auto-detected)" }
+            else if cfg!(target_os = "freebsd") { "freebsd (auto-detected)" }
+            else if cfg!(target_os = "macos") { "macos (auto-detected)" }
+            else { "unknown" }
+        });
+        let arch_name = match target_arch {
+            TargetArch::X86_64 => "x86_64",
+            TargetArch::ARM64 => "arm64",
+        };
+        println!("Target: {} on {}", arch_name, os_name);
+    }
+
     // Read input file
     let source_str = read(input_path)?;
     if args.verbose {
@@ -324,7 +381,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationSt
     }
 
     // Assembly generation
-    let assembly_output = assembly_generation_phase(&ir_output, target_arch, &mut stats, args.verbose)?;
+    let assembly_output = assembly_generation_phase(&ir_output, target_arch, target_os, &mut stats, args.verbose)?;
 
     // Print assembly if requested
     if args.print_asm {
