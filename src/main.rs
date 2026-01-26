@@ -1,6 +1,6 @@
 use clap::Parser;
 use pl0c::{
-    self, backend::assembly_generator::AssemblyGenerator, backend::assembly_generator::TargetArch,
+    backend::assembly_generator::{AssemblyGenerator, TargetArch},
     backend::common::target_os::{TargetOS, Linux, FreeBSD, MacOS},
     ir::IRGenerator, frontend::lexer::scan, read, semantic::symboltable::SymbolTable,
 };
@@ -397,6 +397,56 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationSt
     Ok((assembly_output, stats))
 }
 
+// Run assembler
+fn run_assembler(
+    assembler: &str,
+    assembler_args: Vec<&str>,
+    verbose: bool
+) -> Pl0Result<()> {
+    let output = Command::new(assembler)
+        .args(&assembler_args)
+        .output()
+        .map_err(|e| Pl0Error::compilation_error("assembly", e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(Pl0Error::compilation_error(
+            "assembly",
+            format!("Assembler '{}' failed: {}", assembler, String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+
+    if verbose {
+        println!("  {} completed successfully", assembler);
+    }
+
+    Ok(())
+}
+
+// Run linker
+fn run_linker(
+    linker: &str,
+    linker_args: Vec<&str>,
+    verbose: bool
+) -> Pl0Result<()> {
+    let output = Command::new(linker)
+        .args(&linker_args)
+        .output()
+        .map_err(|e| Pl0Error::compilation_error("linking", e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(Pl0Error::compilation_error(
+            "linking",
+            format!("Linker '{}' failed: {}", linker, String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+
+    if verbose {
+        println!("  {} completed successfully", linker);
+    }
+
+    Ok(())
+}
+
 // Platform-specific assembly and linking
 fn assemble_and_link(
     arch: &str, 
@@ -406,7 +456,9 @@ fn assemble_and_link(
 ) -> Pl0Result<f64> {
     let start_time = Instant::now();
     let os = OperatingSystem::detect()?;
-    let obj_file = "output.o";
+
+    // Use unique object file name to avoid collisions
+    let obj_file = format!("output_{}.o", std::process::id());
 
     // Validate architecture is supported on this OS
     if !os.supported_architectures().contains(&arch) {
@@ -421,76 +473,18 @@ fn assemble_and_link(
         println!(" Assembling and linking for {} on {:?}", arch, os);
     }
 
-    let (_assembler_result, linker_result) = match os {
+    match os {
         OperatingSystem::MacOS => {
-            let as_result = Command::new("as")
-                .arg("-arch").arg(arch)
-                .arg("-o").arg(obj_file)
-                .arg(asm_file)
-                .output();
-
-            let link_result = if as_result.is_ok() && as_result.as_ref().unwrap().status.success() {
-                Command::new("clang")
-                    .arg("-arch").arg(arch)
-                    .arg("-o").arg(exe_file)
-                    .arg(obj_file)
-                    .arg("-e").arg("_start")
-                    .output()
-            } else {
-                return Err(Pl0Error::compilation_error(
-                    "assembly", 
-                    format!("Assembler failed: {}", 
-                           String::from_utf8_lossy(&as_result.unwrap().stderr))
-                ));
-            };
-
-            (as_result, link_result)
+            run_assembler("as", vec!["-arch", arch, "-o", &obj_file, asm_file], verbose)?;
+            run_linker("clang", vec!["-arch", arch, "-o", exe_file, &obj_file, "-e", "_start"], verbose)?;
         }
         OperatingSystem::Linux => {
-            let as_result = Command::new("nasm")
-                .arg("-f").arg("elf64")
-                .arg(asm_file)
-                .arg("-o").arg(obj_file)
-                .output();
-
-            let link_result = if as_result.is_ok() && as_result.as_ref().unwrap().status.success() {
-                Command::new("ld")
-                    .arg(obj_file)
-                    .arg("-o").arg(exe_file)
-                    .output()
-            } else {
-                return Err(Pl0Error::compilation_error(
-                    "assembly",
-                    format!("Assembler failed: {}", 
-                           String::from_utf8_lossy(&as_result.unwrap().stderr))
-                ));
-            };
-
-            (as_result, link_result)
+            run_assembler("nasm", vec!["-f", "elf64", asm_file, "-o", &obj_file], verbose)?;
+            run_linker("ld", vec![&obj_file, "-o", exe_file], verbose)?;
         }
         OperatingSystem::FreeBSD => {
-            let as_result = Command::new("nasm")
-                .arg("-f").arg("elf64")
-                .arg("-o").arg(obj_file)
-                .arg(asm_file)
-                .output();
-
-            let link_result = if as_result.is_ok() && as_result.as_ref().unwrap().status.success() {
-                Command::new("ld")
-                    .arg("-m").arg("elf_amd64_fbsd")
-                    .arg("-static")
-                    .arg(obj_file)
-                    .arg("-o").arg(exe_file)
-                    .output()
-            } else {
-                return Err(Pl0Error::compilation_error(
-                    "assembly",
-                    format!("Assembler failed: {}",
-                           String::from_utf8_lossy(&as_result.unwrap().stderr))
-                ));
-            };
-
-            (as_result, link_result)
+            run_assembler("nasm", vec!["-f", "elf64", "-o", &obj_file, asm_file], verbose)?;
+            run_linker("ld", vec!["-m", "elf_amd64_fbsd", "-static", &obj_file, "-o", exe_file], verbose)?;
         }
         OperatingSystem::Windows => {
             return Err(Pl0Error::compilation_error(
@@ -498,26 +492,10 @@ fn assemble_and_link(
                 "Windows support not yet implemented".to_string()
             ));
         }
-    };
-
-    // Check linker result
-    if let Ok(output) = linker_result {
-        if !output.status.success() {
-            return Err(Pl0Error::compilation_error(
-                "linking",
-                format!("Linker failed: {}", String::from_utf8_lossy(&output.stderr))
-            ));
-        }
-    } else {
-        return Err(Pl0Error::compilation_error(
-            "linking",
-            "Failed to invoke linker".to_string()
-        ));
     }
 
     // Clean up object file
-    let _ = fs::remove_file(obj_file);
-    //let _ = fs::remove_file(asm_file);
+    let _ = fs::remove_file(&obj_file);
 
     let linking_time = start_time.elapsed().as_secs_f64();
     if verbose {
