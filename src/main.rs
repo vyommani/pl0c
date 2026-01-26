@@ -336,12 +336,11 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationSt
     // Determine target OS (auto-detect if not specified)
     let target_os = detect_target_os(&args.target_os)?;
     if args.verbose {
-        let os_name = args.target_os.as_deref().unwrap_or_else(|| {
-            if cfg!(target_os = "linux") { "linux (auto-detected)" }
-            else if cfg!(target_os = "freebsd") { "freebsd (auto-detected)" }
-            else if cfg!(target_os = "macos") { "macos (auto-detected)" }
-            else { "unknown" }
-        });
+        // Prefer explicit CLI value when present, otherwise indicate auto-detection
+        let os_name = match args.target_os.as_deref() {
+            Some(s) => s.to_string(),
+            None => "auto-detected".to_string(),
+        };
         let arch_name = match target_arch {
             TargetArch::X86_64 => "x86_64",
             TargetArch::ARM64 => "arm64",
@@ -419,7 +418,7 @@ fn assemble_and_link(
     }
 
     if verbose {
-        println!(" Assembling and linking for {:?} on {}", arch, os.clone() as u8);
+        println!(" Assembling and linking for {} on {:?}", arch, os);
     }
 
     let (_assembler_result, linker_result) = match os {
