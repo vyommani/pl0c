@@ -1,0 +1,44 @@
+{
+  Fizzbuzz
+}
+
+var x,i,o;
+
+procedure divthree;
+  var div, tmp;
+begin
+  div := i / 3;
+  tmp := div * 3;
+  if i = tmp then
+    o := o + 1;
+end;
+
+procedure divfive;
+  var div, tmp;
+begin
+  div := i / 5;
+  tmp := div * 5;
+  if i = tmp then
+    o := o + 2;
+end;
+
+begin
+  x := 0;
+  while x <> 100 do
+  begin
+    x := x + 1;
+    i := x;
+    o := 0;
+    call divthree;
+    call divfive;
+    if o = 1 then
+      writeStr ('Fizz');
+    if o = 2 then
+      writeStr ('Buzz');
+    if o = 3 then
+      writeStr ('FizzBuzz');
+    if o = 0 then
+      write(x);
+  end;
+end.
+

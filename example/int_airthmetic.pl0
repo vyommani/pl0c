@@ -1,0 +1,12 @@
+var a, b;
+begin
+  a := 2;
+  b := 3;
+  write(a + b);
+  write(a + 17);
+  write(46 + 32);
+  write(5612 + b);
+  write(a - b);
+  write(a * b);
+  write(a / b);
+end.

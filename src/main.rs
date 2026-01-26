@@ -495,7 +495,11 @@ fn assemble_and_link(
     }
 
     // Clean up object file
-    let _ = fs::remove_file(&obj_file);
+    if let Err(e) = fs::remove_file(&obj_file) {
+       if verbose {
+           eprintln!("Warning: Failed to clean up {}: {}", obj_file, e);
+       }
+    }
 
     let linking_time = start_time.elapsed().as_secs_f64();
     if verbose {

@@ -1,0 +1,79 @@
+var num1, num2, testValue;
+
+procedure testEquality;
+begin
+    if num1 = num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure testInequality;
+begin
+    if num1 # num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure testLessThan;
+begin
+    if num1 < num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure testLessEqual;
+begin
+    if num1 <= num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure testGreaterThan;
+begin
+    if num1 > num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure testGreaterEqual;
+begin
+    if num1 >= num2 then
+        write 1
+    else
+        write 0
+end;
+
+procedure complexConditions;
+begin
+    { Nested conditionals }
+    if num1 > 0 then
+        if num2 > 0 then
+            if num1 > num2 then
+                testValue := 1
+            else
+                testValue := 2
+        else
+            testValue := 3
+    else
+        testValue := 4;
+    
+    write testValue
+end;
+
+begin
+    read num1;
+    read num2;
+    
+    call testEquality;
+    call testInequality;
+    call testLessThan;
+    call testLessEqual;
+    call testGreaterThan;
+    call testGreaterEqual;
+    call complexConditions
+end.

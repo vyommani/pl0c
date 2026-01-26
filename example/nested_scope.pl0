@@ -1,0 +1,41 @@
+const globalConst = 100;
+var x, y, z;
+
+procedure outer;
+var x, temp;
+
+    procedure middle;
+    var y, result;
+    
+        procedure inner;
+        var z, localVar;
+        begin
+            z := 5;
+            localVar := x + y + z;  { x from outer, y from middle, z from inner }
+            write localVar
+        end;
+        
+    begin
+        y := 20;
+        result := x + y;  { x from outer, y from middle }
+        write result;
+        call inner
+    end;
+    
+begin
+    x := 10;
+    temp := x + globalConst;
+    write temp;
+    call middle
+end;
+
+begin
+    x := 1;
+    y := 2; 
+    z := 3;
+    call outer;
+    write x;   { Should print global x }
+    write y;   { Should print global y }
+    write z    { Should print global z }
+end.
+
