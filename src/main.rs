@@ -551,7 +551,7 @@ fn main() {
             }
 
             if args.verbose {
-                println!("💾 Assembly written to: {}", output_path.display());
+                println!("Assembly written to: {}", output_path.display());
             }
 
             // Assemble and link unless --no-link is specified
