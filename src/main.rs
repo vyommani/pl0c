@@ -228,11 +228,7 @@ fn calculate_ast_size(ast: &Option<Box<dyn pl0c::ast::Node>>) -> usize {
 }
 
 // Perform lexical analysis phase
-fn lexical_analysis(
-    bytes: &str, 
-    stats: &mut CompilationStats, 
-    verbose: bool
-) -> Pl0Result<(Vec<(pl0c::frontend::token::Token, usize)>, SymbolTable)> {
+fn lexical_analysis(bytes: &str, stats: &mut CompilationStats, verbose: bool) -> Pl0Result<(Vec<(pl0c::frontend::token::Token, usize)>, SymbolTable)> {
     let lexer_start = Instant::now();
     let mut state = pl0c::LineNumber::default();
     let mut symbol_table = SymbolTable::new();
@@ -249,12 +245,7 @@ fn lexical_analysis(
 }
 
 // Perform parsing phase
-fn parsing_phase(
-    tokens: &mut Vec<(pl0c::frontend::token::Token, usize)>,
-    symbol_table: &mut SymbolTable,
-    stats: &mut CompilationStats,
-    verbose: bool
-) -> Pl0Result<Option<Box<dyn pl0c::ast::Node>>> {
+fn parsing_phase(tokens: &mut Vec<(pl0c::frontend::token::Token, usize)>, symbol_table: &mut SymbolTable, stats: &mut CompilationStats, verbose: bool) -> Pl0Result<Option<Box<dyn pl0c::ast::Node>>> {
     let parser_start = Instant::now();
     let mut parser = pl0c::frontend::parser::Parser::new(tokens);
     let ast = parser.parse(symbol_table)?;
@@ -269,12 +260,7 @@ fn parsing_phase(
 }
 
 // Perform code generation phase
-fn code_generation_phase(
-    ast: Option<Box<dyn pl0c::ast::Node>>,
-    symbol_table: SymbolTable,
-    stats: &mut CompilationStats,
-    verbose: bool
-) -> Pl0Result<String> {
+fn code_generation_phase(ast: Option<Box<dyn pl0c::ast::Node>>, symbol_table: SymbolTable, stats: &mut CompilationStats, verbose: bool) -> Pl0Result<String> {
     let codegen_start = Instant::now();
     let mut codegen = IRGenerator::new(symbol_table);
     codegen.generate_code(ast)?;
@@ -291,13 +277,7 @@ fn code_generation_phase(
 }
 
 // Perform assembly generation phase
-fn assembly_generation_phase(
-    ir_output: &str,
-    target_arch: TargetArch,
-    target_os: Box<dyn TargetOS>,
-    stats: &mut CompilationStats,
-    verbose: bool
-) -> Pl0Result<String> {
+fn assembly_generation_phase(ir_output: &str, target_arch: TargetArch, target_os: Box<dyn TargetOS>, stats: &mut CompilationStats, verbose: bool) -> Pl0Result<String> {
     let assembly_start = Instant::now();
     let mut assembly_gen = AssemblyGenerator::new(target_arch, target_os);
     assembly_gen.emit_assembly(ir_output)?;
@@ -398,11 +378,7 @@ fn compile(input_path: &PathBuf, args: &Cli) -> Pl0Result<(String, CompilationSt
 }
 
 // Run assembler
-fn run_assembler(
-    assembler: &str,
-    assembler_args: Vec<&str>,
-    verbose: bool
-) -> Pl0Result<()> {
+fn run_assembler(assembler: &str, assembler_args: Vec<&str>, verbose: bool) -> Pl0Result<()> {
     let output = Command::new(assembler)
         .args(&assembler_args)
         .output()
@@ -423,11 +399,7 @@ fn run_assembler(
 }
 
 // Run linker
-fn run_linker(
-    linker: &str,
-    linker_args: Vec<&str>,
-    verbose: bool
-) -> Pl0Result<()> {
+fn run_linker(linker: &str, linker_args: Vec<&str>, verbose: bool) -> Pl0Result<()> {
     let output = Command::new(linker)
         .args(&linker_args)
         .output()
@@ -448,12 +420,7 @@ fn run_linker(
 }
 
 // Platform-specific assembly and linking
-fn assemble_and_link(
-    arch: &str, 
-    asm_file: &str, 
-    exe_file: &str, 
-    verbose: bool
-) -> Pl0Result<f64> {
+fn assemble_and_link(arch: &str, asm_file: &str, exe_file: &str, verbose: bool) -> Pl0Result<f64> {
     let start_time = Instant::now();
     let os = OperatingSystem::detect()?;
 
