@@ -63,11 +63,19 @@ pub fn handle_binary_operation(gen: &mut IRGenerator, binop: &BinOp) -> Pl0Resul
     let right_expr = binop.right.as_ref()
         .ok_or_else(|| Pl0Error::codegen_error("Binary operation missing right operand"))?;
     
+    let left_const = fold_constant_expression(gen, left_expr);
+    let right_const = fold_constant_expression(gen, right_expr);
+
+    if right_const == Some(0) {
+        match binop.operator.as_str() {
+            "Divide" => return Err(Pl0Error::codegen_error("Division by zero")),
+            "Modulo" => return Err(Pl0Error::codegen_error("Modulo by zero")),
+            _ => {}
+        }
+    }
+
     // Try constant folding
-    if let (Some(left), Some(right)) = (
-        fold_constant_expression(gen, left_expr),
-        fold_constant_expression(gen, right_expr)
-    ) {
+    if let (Some(left), Some(right)) = (left_const, right_const) {
         let result = match binop.operator.as_str() {
             "Plus" => left + right,
             "Minus" => left - right,

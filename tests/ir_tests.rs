@@ -621,6 +621,20 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_division_by_zero_constants() -> Pl0Result<()> {
+        let source = "
+        var x, y;
+        begin
+            x := 10;
+            y := 217 / 0
+        end.
+        ";
+
+        assert!(compile_to_ir(source).is_err(), "Should fail or handle division by zero");
+
+        Ok(())
+    }
     // Test deeply nested expressions
     // Purpose: Stress test register allocation and precedence
     #[test]
@@ -960,7 +974,7 @@ mod tests {
                 "Should use different stack offsets for shadowed variables");
         assert!(ir.contains("li v2, 10") && ir.contains("st [x], v2"), "Should assign 10 to global x");
         assert!(ir.contains("li v0, 20") && ir.contains("st [bp-16], v0"), "Should assign 20 to outer x");
-        assert!(ir.contains("li v1, 30") && ir.contains("st [bp-16], v0"), "Should assign 30 to inner x");
+        assert!(ir.contains("li v1, 30") && ir.contains("st [bp-16], v1"), "Should assign 30 to inner x");
         
         Ok(())
     }
