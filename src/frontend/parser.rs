@@ -94,7 +94,10 @@ impl<'a> Parser<'a> {
 
     fn get_numeric_literal(&self, token: &Token) -> Result<i64, Pl0Error> {
         match token {
-            Token::Number(n) => Ok(*n),
+            Token::Number(n) => i64::try_from(*n).map_err(|_| Pl0Error::InvalidNumber {
+                number: n.to_string(),
+                line: self.line_number,
+            }),
             _ => Err(Pl0Error::GenericError(format!(
                 "Not able to extract the numeric literal from token: {:?} at line {}",
                 token, self.line_number
@@ -491,6 +494,15 @@ impl<'a> Parser<'a> {
             }
             Token::Minus => {
                 self.expect(Token::Minus)?;
+                if let Token::Number(magnitude) = self.current_token {
+                    if i64::try_from(magnitude).is_err() {
+                        let value = i64::try_from(-(magnitude as i128)).map_err(|_| {
+                            Pl0Error::InvalidNumber { number: format!("-{}", magnitude), line: self.line_number }
+                        })?;
+                        self.expect_number()?;
+                        return Ok(Some(Box::new(Number::new(value))));
+                    }
+                }
                 let operand = self.factor(table, mapped_identifiers)?;
                 if operand.is_none() {
                     return Err(Pl0Error::SyntaxError {

@@ -134,7 +134,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        number_str.parse::<i64>()
+        number_str.parse::<u64>()
             .map(Token::Number)
             .map_err(|_| Pl0Error::InvalidNumber {number: number_str, line: self.state.line})
     }

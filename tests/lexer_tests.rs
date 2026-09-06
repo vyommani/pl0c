@@ -23,6 +23,74 @@ fn test_number_literals() -> Pl0Result<()> {
 }
 
 #[test]
+fn test_number_literal_leading_zeros() -> Pl0Result<()> {
+    let source = "007";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let tokens = scan(&mut state, source, &mut table)?;
+    assert_eq!(tokens, vec![(Token::Number(7), 1)]);
+    Ok(())
+}
+
+#[test]
+fn test_number_literal_i64_max() -> Pl0Result<()> {
+    let source = "9223372036854775807";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let tokens = scan(&mut state, source, &mut table)?;
+    assert_eq!(tokens, vec![(Token::Number(9223372036854775807), 1)]);
+    Ok(())
+}
+
+#[test]
+fn test_number_literal_i64_max_plus_one_lexes_ok() -> Pl0Result<()> {
+    let source = "9223372036854775808";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let tokens = scan(&mut state, source, &mut table)?;
+    assert_eq!(tokens, vec![(Token::Number(9223372036854775808), 1)]);
+    Ok(())
+}
+
+#[test]
+fn test_negative_i64_min_magnitude_is_two_tokens() -> Pl0Result<()> {
+    let source = "-9223372036854775808";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let tokens = scan(&mut state, source, &mut table)?;
+    assert_eq!(
+        tokens,
+        vec![(Token::Minus, 1), (Token::Number(9223372036854775808), 1)]
+    );
+    Ok(())
+}
+
+#[test]
+fn test_number_literal_u64_max() -> Pl0Result<()> {
+    let source = "18446744073709551615";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let tokens = scan(&mut state, source, &mut table)?;
+    assert_eq!(tokens, vec![(Token::Number(18446744073709551615), 1)]);
+    Ok(())
+}
+
+#[test]
+fn test_number_literal_overflows_u64() -> Pl0Result<()> {
+    let source = "18446744073709551616";
+    let mut state = LineNumber::default();
+    let mut table = SymbolTable::new();
+    let result = scan(&mut state, source, &mut table);
+    if let Err(Pl0Error::InvalidNumber { number, line }) = result {
+        assert_eq!(number, "18446744073709551616");
+        assert_eq!(line, 1);
+        Ok(())
+    } else {
+        panic!("Expected an InvalidNumber error for a magnitude beyond u64::MAX, but got: {:?}", result);
+    }
+}
+
+#[test]
 fn test_string_literal() -> Pl0Result<()> {
     let source = "writestr(\"Hello, World!\") .";
     let mut state = LineNumber::default();

@@ -2,7 +2,7 @@ use std::mem;
 #[derive(Debug, Clone)]
 pub enum Token {
     Ident(String),
-    Number(i64),
+    Number(u64),
     Const,
     Var,
     Procedure,

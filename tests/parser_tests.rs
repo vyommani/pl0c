@@ -2143,6 +2143,94 @@ fn test_complex_calculator_program() -> Pl0Result<()> {
         Ok(())
     }
 
+    // i64::MIN's magnitude (9223372036854775808) can't be represented as a
+    // positive i64, so unlike every other literal above it can't parse as
+    // `BinOp(0, N, "Minus")` - the parser folds it directly into a single
+    // negative Number node instead. See the Token::Minus arm of factor().
+    #[test]
+    fn test_unary_minus_i64_min_literal() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := -9223372036854775808
+        end.
+        ";
+
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let stmt = block.statement.as_ref().unwrap().as_any().downcast_ref::<BeginStmt>().expect("Expected BeginStmt");
+        let assign = stmt.stmts[0].as_ref().unwrap().as_any().downcast_ref::<AssignStmt>().expect("Expected AssignStmt");
+
+        // Should be a direct Number(i64::MIN), not a BinOp(0, N, "Minus").
+        let num = assign.expr.as_ref().unwrap().as_any().downcast_ref::<Number>()
+            .expect("Expected a direct Number node for i64::MIN, not a BinOp");
+        assert_eq!(num.value, i64::MIN);
+
+        Ok(())
+    }
+
+    // One magnitude further negative than i64::MIN has no valid i64
+    // representation at all, with or without the special case, so it must
+    // still be a compile error rather than silently wrapping.
+    #[test]
+    fn test_unary_minus_beyond_i64_min_errors() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := -9223372036854775809
+        end.
+        ";
+
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+
+        assert!(result.is_err(), "Expected parse error for a magnitude beyond i64::MIN");
+        if let Err(Pl0Error::InvalidNumber { number, .. }) = result {
+            assert_eq!(number, "-9223372036854775809");
+        } else {
+            panic!("Expected InvalidNumber, got a different error");
+        }
+
+        Ok(())
+    }
+
+    // A bare positive literal one past i64::MAX has no minus to fold it
+    // through, so get_numeric_literal's u64 -> i64 conversion must reject it.
+    #[test]
+    fn test_positive_literal_beyond_i64_max_errors() -> Pl0Result<()> {
+        let source = "
+        var x;
+        begin
+            x := 9223372036854775808
+        end.
+        ";
+
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+
+        assert!(result.is_err(), "Expected parse error for a positive literal beyond i64::MAX");
+        if let Err(Pl0Error::InvalidNumber { number, .. }) = result {
+            assert_eq!(number, "9223372036854775808");
+        } else {
+            panic!("Expected InvalidNumber, got a different error");
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_invalid_unary_expression() -> Pl0Result<()> {
         let source = "var a;
