@@ -1,0 +1,10 @@
+  var a, b;
+  procedure setA;
+  begin
+    a := 42
+  end;
+  begin
+    a := 1;
+    call setA;
+    write(a)
+  end.

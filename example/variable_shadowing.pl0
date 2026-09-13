@@ -1,0 +1,12 @@
+  var a;
+  procedure test;
+    var a;
+  begin
+    a := 99;
+    write(a)
+  end;
+  begin
+    a := 5;
+    call test;
+    write(a)
+  end.
