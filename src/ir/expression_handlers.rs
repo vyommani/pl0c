@@ -9,7 +9,8 @@ use crate::{
 pub fn handle_ident(gen: &mut IRGenerator, ident: &Ident) -> Pl0Result<String> {
     use super::symbol_helpers;
     
-    let symbol = gen.symbol_table.get_at_level(&ident.value, gen.scope.level())
+    gen.symbol_table.enter_scope(gen.scope.level());
+    let symbol = gen.symbol_table.get(&ident.value)
         .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined identifier: {}", ident.value)))?.clone();
     
     match symbol.symbol_type {
@@ -118,6 +119,7 @@ fn fold_constant_expression(gen: &mut IRGenerator, expr: &Box<dyn ExpressionNode
         return Some(num.value);
     }
     if let Some(ident) = expr.as_any().downcast_ref::<Ident>() {
+        gen.symbol_table.enter_scope(gen.scope.level());
         if let Some(symbol) = gen.symbol_table.get(&ident.value) {
             if let SymbolType::Constant(value) = symbol.symbol_type {
                 return Some(value);

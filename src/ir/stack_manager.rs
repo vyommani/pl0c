@@ -9,9 +9,10 @@ use crate::{
 pub fn initialize_local_variables(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
     if !block.var_decl.var_decl.is_empty() {
         // Collect all the variables and their offsets first
+        gen.symbol_table.enter_scope(gen.scope.level());
         let mut var_offsets = Vec::new();
         for var_name in &block.var_decl.var_decl {
-            if let Some(symbol) = gen.symbol_table.get_at_level(var_name, gen.scope.level()) {
+            if let Some(symbol) = gen.symbol_table.get(var_name) {
                 if let SymbolLocation::StackOffset(offset) = symbol.location {
                     var_offsets.push(offset);
                 }

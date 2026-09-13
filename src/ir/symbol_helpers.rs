@@ -6,11 +6,12 @@ use crate::{
 };
 
 pub fn get_symbol_with_type<'a>(
-    gen: &'a IRGenerator,
+    gen: &'a mut IRGenerator,
     name: &str,
     expected_type: SymbolType,
     operation: &str
 ) -> Pl0Result<&'a Symbol> {
+    gen.symbol_table.enter_scope(gen.scope.level());
     let symbol = gen.symbol_table.get(name)
         .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined {}: {}", operation, name)))?;
     match (&symbol.symbol_type, &expected_type) {
@@ -24,11 +25,12 @@ pub fn get_symbol_with_type<'a>(
 }
 
 pub fn get_variable_symbol<'a>(
-    gen: &'a IRGenerator,
+    gen: &'a mut IRGenerator,
     name: &str,
     operation: &str
 ) -> Pl0Result<&'a Symbol> {
-    let symbol = gen.symbol_table.get_at_level(name, gen.scope.level())
+    gen.symbol_table.enter_scope(gen.scope.level());
+    let symbol = gen.symbol_table.get(name)
         .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined {}: {}", operation, name)))?;
     if !matches!(symbol.symbol_type, SymbolType::Variable) {
         return Err(Pl0Error::codegen_error(
@@ -39,7 +41,7 @@ pub fn get_variable_symbol<'a>(
 }
 
 pub fn get_procedure_symbol<'a>(
-    gen: &'a IRGenerator,
+    gen: &'a mut IRGenerator,
     name: &str,
     operation: &str
 ) -> Pl0Result<&'a Symbol> {
@@ -61,7 +63,8 @@ pub fn emit_load_from_symbol(
     fallback_name: &str
 ) -> Pl0Result<()> {
     let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    let distance = gen.scope.level().saturating_sub(symbol.level);
+    gen.symbol_table.enter_scope(gen.scope.level());
+    let distance = gen.symbol_table.distance_to(symbol.level);
     match &symbol.location {
         SymbolLocation::StackOffset(offset) => {
             if distance > 0 {
@@ -83,7 +86,8 @@ pub fn emit_store_to_symbol(
     fallback_name: &str
 ) -> Pl0Result<()> {
     let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    let distance = gen.scope.level().saturating_sub(symbol.level);
+    gen.symbol_table.enter_scope(gen.scope.level());
+    let distance = gen.symbol_table.distance_to(symbol.level);
     match &symbol.location {
         SymbolLocation::StackOffset(offset) => {
             if distance > 0 {

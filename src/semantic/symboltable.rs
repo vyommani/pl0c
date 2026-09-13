@@ -25,10 +25,12 @@ pub struct Symbol {
     pub symbol_type: SymbolType,
     pub line_number: usize,
     pub location: SymbolLocation,
-    pub scope_level: usize,
     pub is_global: bool,
     pub initialized: bool,
     pub level: usize,
+    // For a Procedure symbol: the scope id of its own body, set once via
+    // SymbolTable::set_body_scope right after that scope is created.
+    pub body_scope: Option<usize>,
 }
 
 impl Symbol {
@@ -37,89 +39,112 @@ impl Symbol {
             symbol_type,
             line_number,
             location,
-            scope_level: 0,
             is_global,
             initialized: false,
             level,
+            body_scope: None,
         }
     }
 }
 
 pub struct SymbolTable {
     scopes: Vec<HashMap<String, Symbol>>,
+    parents: Vec<Option<usize>>,
+    active: Vec<usize>,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
+            parents: vec![None],
+            active: vec![0],
         }
     }
 
-    pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+    /// The scope `insert` and `get` currently resolve against.
+    pub fn current_scope(&self) -> usize {
+        *self.active.last().unwrap_or(&0)
     }
 
-    pub fn drop_scope(&mut self) -> Result<(), Pl0Error> {
-        if self.scopes.len() <= 1 {
+    /// How many scopes are currently active (i.e. how deeply nested we are).
+    pub fn depth(&self) -> usize {
+        self.active.len()
+    }
+
+    /// Creates a child of the current scope, enters it, and returns its id.
+    pub fn push_scope(&mut self) -> usize {
+        let id = self.scopes.len();
+        self.scopes.push(HashMap::new());
+        self.parents.push(Some(self.current_scope()));
+        self.active.push(id);
+        id
+    }
+
+    /// Leaves the current scope, returning to its parent.
+    pub fn pop_scope(&mut self) -> Pl0Result<()> {
+        if self.active.len() <= 1 {
             return Err(Pl0Error::codegen_error("Cannot drop global scope - scope underflow"));
         }
-        self.scopes.pop();
+        self.active.pop();
         Ok(())
     }
 
-    pub fn insert(&mut self, name: &str, symbol: Symbol) -> Pl0Result<()>{
+    pub fn enter_scope(&mut self, id: usize) {
+        let mut chain = Vec::new();
+        let mut current = Some(id);
+        while let Some(idx) = current {
+            chain.push(idx);
+            current = self.parents[idx];
+        }
+        chain.reverse();
+        self.active = chain;
+    }
+
+    /// Records `name` (declared in `owner_scope`) as owning `body_scope` -
+    /// used for procedures, whose own body gets a fresh child scope that IR
+    /// generation must be able to find again later via `enter_scope`.
+    pub fn set_body_scope(&mut self, owner_scope: usize, name: &str, body_scope: usize) {
+        if let Some(symbol) = self.scopes[owner_scope].get_mut(name) {
+            symbol.body_scope = Some(body_scope);
+        }
+    }
+
+    /// Inserts `symbol` into the current scope. Fails on an empty name or a
+    /// redefinition within that same scope; shadowing an outer scope is fine.
+    pub fn insert(&mut self, name: &str, symbol: Symbol) -> Pl0Result<()> {
         if name.is_empty() {
-            return Err(Pl0Error::InvalidIdentifier {identifier: name.to_string(), line: symbol.line_number});
+            return Err(Pl0Error::InvalidIdentifier { identifier: name.to_string(), line: symbol.line_number });
         }
-        if let Some(scope) = self.scopes.last_mut() {
-            if scope.contains_key(name) {
-                return Err(Pl0Error::SymbolAlreadyDefined {name: name.to_string(),line: symbol.line_number});
-            }
-            scope.insert(name.to_string(), symbol);
+        let current = self.current_scope();
+        let scope = &mut self.scopes[current];
+        if scope.contains_key(name) {
+            return Err(Pl0Error::SymbolAlreadyDefined { name: name.to_string(), line: symbol.line_number });
         }
+        scope.insert(name.to_string(), symbol);
         Ok(())
     }
 
-    // Get a reference to a symbol by name, searching from innermost to outermost scope.
+    /// Looks `name` up starting at the current scope and walking outward.
     pub fn get(&self, name: &str) -> Option<&Symbol> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(sym) = scope.get(name) {
-                return Some(sym);
-            }
-        }
-        None
+        self.active.iter().rev().find_map(|&idx| self.scopes[idx].get(name))
     }
 
-    pub fn get_at_level(&self, name: &str, level: usize) -> Option<&Symbol> {
-        // Search from innermost to outermost, but only up to the given lexical level
-        for (scope_idx, scope) in self.scopes.iter().enumerate().rev() {
-            if scope_idx > level {
-                continue;
-            }
-            if let Some(symbol) = scope.get(name) {
-                return Some(symbol);
-            }
-        }
-        None
-    }
-
-    // Get a mutable reference to a symbol by name, searching from innermost to outermost scope.
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Symbol> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(sym) = scope.get_mut(name) {
-                return Some(sym);
-            }
+        let idx = self.active.iter().rev().copied().find(|&idx| self.scopes[idx].contains_key(name))?;
+        self.scopes[idx].get_mut(name)
+    }
+
+    /// How many static-link hops separate the current scope from `ancestor`
+    /// (0 if `ancestor` is the current scope itself).
+    pub fn distance_to(&self, ancestor: usize) -> usize {
+        match self.active.iter().rposition(|&idx| idx == ancestor) {
+            Some(pos) => self.active.len() - 1 - pos,
+            None => self.active.len(),
         }
-        None
     }
 
-    // Returns an iterator over all symbols in all scopes (innermost to outermost).
-    pub fn all_symbols(&self) -> impl Iterator<Item = &Symbol> {
-        self.scopes.iter().rev().flat_map(|scope| scope.values())
-    }
-
-    // Type check a symbol by name and expected type. Returns Ok(()) if found, Err otherwise.
+    /// Looks `name` up and checks it has `expected_type`.
     pub fn type_check(&self, name: &str, expected_type: &SymbolType, line_number: usize) -> Pl0Result<()> {
         let symbol = self.get(name).ok_or_else(|| Pl0Error::UndefinedSymbol {
             name: name.to_string(),
@@ -134,54 +159,5 @@ impl SymbolTable {
             });
         }
         Ok(())
-    }
-
-    pub fn get_scopes_len(&self) -> usize {
-        self.scopes.len()
-    }
-
-    pub fn print_symbols(&self) {
-        println!("{:-<80}", "");
-        println!(
-            "| {:<15} | {:<15} | {:<20} | {:<10} | {:<12} | {:<10} |",
-            "Scope", "Name", "Type", "Location", "IsGlobal", "Initialized"
-        );
-        println!("{:-<80}", "");
-        for (scope_idx, scope) in self.scopes.iter().enumerate() {
-            if scope.is_empty() {
-                println!("| {:<15} | (empty) {:<60} |", scope_idx, "");
-            } else {
-                for (name, symbol) in scope {
-                    println!(
-                        "| {:<15} | {:<15} | {:<20?} | {:<10?} | {:<12} | {:<10} |",
-                        scope_idx,
-                        name,
-                        symbol.symbol_type,
-                        symbol.location,
-                        symbol.is_global,
-                        symbol.initialized
-                    );
-                }
-            }
-        }
-        println!("{:-<80}", "");
-    }
-
-    pub fn get_with_distance(&self, name: &str, current_level: usize) -> Option<(&Symbol, usize)> {
-        //let mut distance = 0;
-        for (_scope_idx, scope) in self.scopes.iter().enumerate().rev() {
-            if let Some(symbol) = scope.get(name) {
-                // Distance = current_level - symbol.level
-                let d = current_level.saturating_sub(symbol.level);
-                return Some((symbol, d));
-            }
-            //distance += 1;
-        }
-        None
-    }
-
-    // Checks if a symbol with the given name exists in any scope.
-    pub fn contains(&self, name: &str) -> bool {
-        self.get(name).is_some()
     }
 }

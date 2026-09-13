@@ -138,7 +138,7 @@ impl<'a> Parser<'a> {
             self.expect_ident()?;
             self.expect(Token::Equal)?;
             let num = self.get_numeric_literal(&self.current_token)?;
-            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
+            table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.current_scope()))?;
             self.expect_number()?;
             consts.push((id, num));
             while self.current_token == Token::Comma {
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
                 self.expect_ident()?;
                 self.expect(Token::Equal)?;
                 let num = self.get_numeric_literal(&self.current_token)?;
-                table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.get_scopes_len() - 1))?;
+                table.insert(&id, Symbol::new(SymbolType::Constant(num), self.line_number, SymbolLocation::Immediate(num), true, table.current_scope()))?;
                 self.expect_number()?;
                 consts.push((id, num));
             }
@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         let mut idents = Vec::<String>::new();
         while self.current_token == Token::Var {
             self.expect(Token::Var)?;
-            let is_global = table.get_scopes_len() == 1;
+            let is_global = table.current_scope() == 0;
             let mut offset = INITIAL_STACK_OFFSET;
             loop {
                 let mut id = self.get_identifier(&self.current_token)?;
@@ -171,7 +171,7 @@ impl<'a> Parser<'a> {
                 } else {
                     SymbolLocation::StackOffset(offset.try_into().unwrap())
                 };
-                table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.get_scopes_len() - 1))?;
+                table.insert(&id, Symbol::new(SymbolType::Variable, self.line_number, location, is_global, table.current_scope()))?;
                 self.expect_ident()?;
                 idents.push(id);
                 if !is_global {
@@ -191,16 +191,26 @@ impl<'a> Parser<'a> {
     fn parse_procedure_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<Vec<(String, Option<Box<dyn Node>>)>, Pl0Error> {
         let mut procedures = Vec::new();
         while self.current_token == Token::Procedure {
-            // Always insert procedure name in global (top) scope
+            // The procedure name itself belongs to the enclosing block's
+            // scope (like any other declaration); its own body gets a
+            // fresh child scope, recorded on the symbol below so that IR
+            // generation can jump straight to it later.
             self.expect(Token::Procedure)?;
             let mut name = self.get_identifier(&self.current_token)?;
             name = rename_identifier(&name, true, mapped_identifiers);
-            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, table.get_scopes_len() - 1))?;
-            table.push_scope();
+            let enclosing_scope = table.current_scope();
+            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, enclosing_scope))?;
+            let body_scope = table.push_scope();
+            table.set_body_scope(enclosing_scope, &name, body_scope);
             self.expect_ident()?;
             self.expect(Token::Semicolon)?;
             let block = self.block(table, mapped_identifiers)?;
             self.expect(Token::Semicolon)?;
+            // Only the "what's currently in scope" tracking is popped here;
+            // the body's declarations stay in the table permanently (see
+            // SymbolTable::enter_scope) so IR generation can still find them
+            // when it revisits this procedure after parsing has finished.
+            table.pop_scope()?;
             procedures.push((name, block));
         }
         Ok(procedures)

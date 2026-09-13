@@ -9,8 +9,13 @@ use crate::{
 pub fn handle_proc_decl(gen: &mut IRGenerator, expr: &ProcDecl) -> Pl0Result<()> {
     // Only emit procedures if we're not already in a procedure
     if !gen.scope.in_procedure() && !gen.procedures_emitted {
+        let enclosing_level = gen.scope.level();
         for (name, proc_block) in &expr.procedurs {
-            emit_single_procedure(gen, name, proc_block)?;
+            gen.symbol_table.enter_scope(enclosing_level);
+            let body_scope = gen.symbol_table.get(name)
+                .and_then(|symbol| symbol.body_scope)
+                .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} has no recorded body scope", name)))?;
+            emit_single_procedure(gen, name, proc_block, body_scope)?;
         }
     }
     Ok(())
@@ -49,15 +54,10 @@ pub fn handle_block(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
     Ok(())
 }
 
-fn emit_single_procedure(gen: &mut IRGenerator, name: &str, proc_block: &Option<Box<dyn Node>>) -> Pl0Result<()> {
+fn emit_single_procedure(gen: &mut IRGenerator, name: &str, proc_block: &Option<Box<dyn Node>>, body_scope: usize) -> Pl0Result<()> {
     use super::ir_emitter;
-    
     ir_emitter::emit_label(gen, name)?;
-    
-    // Set scope level based on procedure's level in symbol table
-    let proc_symbol = gen.symbol_table.get(name)
-        .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} not found in symbol table", name)))?;
-    gen.scope = gen.scope.push_scope(true, Some(proc_symbol.level + 1), false);
+    gen.scope = gen.scope.push_scope(true, Some(body_scope), false);
     
     // Calculate stack size
     let mut stack_slots = 0;
@@ -86,17 +86,20 @@ fn emit_single_procedure(gen: &mut IRGenerator, name: &str, proc_block: &Option<
     Ok(())
 }
 
-fn collect_all_procedures<'a>(block: &'a Block, procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>)>) {
-    // Add procedures from this block
+fn collect_all_procedures<'a>(gen: &mut IRGenerator, block: &'a Block, enclosing_level: usize, procedures: &mut Vec<(String, &'a Option<Box<dyn Node>>, usize)>,) -> Pl0Result<()> {
     for (name, proc_block) in &block.proc_decl.procedurs {
-        procedures.push((name.clone(), proc_block));
-        // Recursively collect nested procedures
+        gen.symbol_table.enter_scope(enclosing_level);
+        let body_scope = gen.symbol_table.get(name)
+            .and_then(|symbol| symbol.body_scope)
+            .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} has no recorded body scope", name)))?;
+        procedures.push((name.clone(), proc_block, body_scope));
         if let Some(proc_block) = proc_block {
             if let Some(nested_block) = proc_block.as_any().downcast_ref::<Block>() {
-                collect_all_procedures(nested_block, procedures);
+                collect_all_procedures(gen, nested_block, body_scope, procedures)?;
             }
         }
     }
+    Ok(())
 }
 
 fn emit_procedures(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
@@ -104,9 +107,10 @@ fn emit_procedures(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
         return Ok(());
     }
     let mut all_procedures = Vec::new();
-    collect_all_procedures(block, &mut all_procedures);
-    for (name, proc_block) in all_procedures {
-        emit_single_procedure(gen, &name, proc_block)?;
+    let enclosing_level = gen.scope.level();
+    collect_all_procedures(gen, block, enclosing_level, &mut all_procedures)?;
+    for (name, proc_block, body_scope) in all_procedures {
+        emit_single_procedure(gen, &name, proc_block, body_scope)?;
     }
     gen.procedures_emitted = true;
     Ok(())
