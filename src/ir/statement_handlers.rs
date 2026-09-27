@@ -129,9 +129,7 @@ pub fn handle_const_decl(gen: &mut IRGenerator, expr: &ConstDecl) -> Pl0Result<(
 
 pub fn handle_var_decl(gen: &mut IRGenerator, expr: &VarDecl) -> Pl0Result<()> {
     for var_name in &expr.var_decl {
-        if gen.scope.in_procedure() {
-            let _ = gen.scope.allocate_variable();
-        } else {
+        if !gen.scope.in_procedure() {
             let mut emitter = StringCodeEmitter::new(&mut gen.variables);
             emitter.emit_var(var_name)?;
         }

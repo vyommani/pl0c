@@ -159,10 +159,10 @@ impl<'a> Parser<'a> {
 
     fn parse_var_declarations(&mut self, table: &mut SymbolTable, mapped_identifiers: &mut HashMap<String, String>) -> Result<VarDecl, Pl0Error> {
         let mut idents = Vec::<String>::new();
+        let mut offset = INITIAL_STACK_OFFSET;
         while self.current_token == Token::Var {
             self.expect(Token::Var)?;
             let is_global = table.current_scope() == 0;
-            let mut offset = INITIAL_STACK_OFFSET;
             loop {
                 let mut id = self.get_identifier(&self.current_token)?;
                 id = rename_identifier(&id, is_global, mapped_identifiers);

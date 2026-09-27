@@ -5,6 +5,7 @@ use pl0c::frontend::token::Token;
 use pl0c::LineNumber;
 use pl0c::frontend::parser::Parser;
 use pl0c::ast::Node;
+use pl0c::semantic::symboltable::SymbolLocation;
 use pl0c::semantic::symboltable::SymbolType;
 use pl0c::ast::Block;
 use pl0c::ast::BeginStmt;
@@ -1573,10 +1574,111 @@ fn test_complex_calculator_program() -> Pl0Result<()> {
         let x_symbol = table.get("x").expect("Variable x not found");
         assert_eq!(x_symbol.symbol_type, SymbolType::Variable);
         assert_eq!(x_symbol.level, 0);
+        assert!(matches!(x_symbol.location, SymbolLocation::GlobalLabel(ref label) if label == "x"));
         let y_symbol = table.get("y").expect("Variable y not found");
         assert_eq!(y_symbol.symbol_type, SymbolType::Variable);
         assert_eq!(y_symbol.level, 0);
+        assert!(matches!(y_symbol.location, SymbolLocation::GlobalLabel(ref label) if label == "y"));
         
+        Ok(())
+    }
+
+    #[test]
+    fn test_procedure_locals_keep_incrementing_across_var_statements() -> Pl0Result<()> {
+        let source = "
+            procedure p;
+            var a, b;
+            var c;
+            begin
+            end;
+            begin
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        assert!(ast.is_some(), "Expected AST, found None");
+
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        assert_eq!(block.proc_decl.procedurs.len(), 1, "Expected one procedure");
+        let (name, proc_body) = &block.proc_decl.procedurs[0];
+        assert_eq!(name, "p");
+        let proc_block = proc_body.as_ref().expect("Expected procedure body").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        assert_eq!(proc_block.var_decl.var_decl, vec!["a", "b", "c"]);
+
+        let p_symbol = table.get("p").expect("Procedure p not found");
+        let body_scope = p_symbol.body_scope.expect("Procedure p has no body scope");
+        table.enter_scope(body_scope);
+
+        let a_symbol = table.get("a").expect("Variable a not found");
+        assert!(matches!(a_symbol.location, SymbolLocation::StackOffset(16)));
+        assert!(!a_symbol.is_global);
+        assert_eq!(a_symbol.level, body_scope);
+        let b_symbol = table.get("b").expect("Variable b not found");
+        assert!(matches!(b_symbol.location, SymbolLocation::StackOffset(24)));
+        assert!(!b_symbol.is_global);
+        let c_symbol = table.get("c").expect("Variable c not found");
+        assert!(matches!(c_symbol.location, SymbolLocation::StackOffset(32)));
+        assert!(!c_symbol.is_global);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_nested_procedure_restarts_stack_offsets() -> Pl0Result<()> {
+        let source = "
+            procedure outer;
+            var a;
+            var b;
+                procedure inner;
+                var c;
+                var d;
+                begin
+                end;
+            begin
+            end;
+            begin
+            end.
+        ";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let ast = parser.parse(&mut table)?;
+        assert!(ast.is_some(), "Expected AST, found None");
+
+        let binding = ast.unwrap();
+        let program = binding.as_any().downcast_ref::<Program>().expect("Expected Program node");
+        let block = program.block.as_ref().expect("Expected Block in Program").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        let (outer_name, outer_body) = &block.proc_decl.procedurs[0];
+        assert_eq!(outer_name, "outer");
+        let outer_block = outer_body.as_ref().expect("Expected outer body").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        assert_eq!(outer_block.var_decl.var_decl, vec!["a", "b"]);
+        let (inner_name, inner_body) = &outer_block.proc_decl.procedurs[0];
+        assert_eq!(inner_name, "inner");
+        let inner_block = inner_body.as_ref().expect("Expected inner body").as_any().downcast_ref::<Block>().expect("Expected Block node");
+        assert_eq!(inner_block.var_decl.var_decl, vec!["c", "d"]);
+
+        let outer_symbol = table.get("outer").expect("Procedure outer not found");
+        let outer_scope = outer_symbol.body_scope.expect("Procedure outer has no body scope");
+        table.enter_scope(outer_scope);
+        let a_symbol = table.get("a").expect("Variable a not found");
+        assert!(matches!(a_symbol.location, SymbolLocation::StackOffset(16)));
+        let b_symbol = table.get("b").expect("Variable b not found");
+        assert!(matches!(b_symbol.location, SymbolLocation::StackOffset(24)));
+
+        let inner_symbol = table.get("inner").expect("Procedure inner not found");
+        let inner_scope = inner_symbol.body_scope.expect("Procedure inner has no body scope");
+        table.enter_scope(inner_scope);
+        let c_symbol = table.get("c").expect("Variable c not found");
+        assert!(matches!(c_symbol.location, SymbolLocation::StackOffset(16)));
+        let d_symbol = table.get("d").expect("Variable d not found");
+        assert!(matches!(d_symbol.location, SymbolLocation::StackOffset(24)));
+
         Ok(())
     }
     
