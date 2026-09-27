@@ -531,8 +531,11 @@ impl Arm64AssemblyEmitter {
 
     fn emit_call(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
-        // Pass static link for direct child: mov x19, x29
+        let hops = rest.get(1).unwrap_or(&"0").trim_end_matches(',').parse::<usize>().unwrap_or(0);
         write_line(output, format_args!("    mov x19, x29\n"))?;
+        for _ in 0..hops {
+            write_line(output, format_args!("    ldr x19, [x19, #-8]\n"))?;
+        }
         write_line(output, format_args!("    bl {}\n", label))?;
         Ok(())
     }

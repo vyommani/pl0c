@@ -207,10 +207,68 @@ mod tests {
         
         assert!(ir.contains("outer:"), "Should contain outer procedure");
         assert!(ir.contains("inner:"), "Should contain inner procedure");
-        assert!(ir.contains("call inner"), "Should call inner procedure");
-        assert!(ir.contains("call outer"), "Should call outer procedure");
+        assert!(ir.contains("call inner, 0"), "Direct child call passes the current frame");
+        assert!(ir.contains("call outer, 0"), "Top-level call passes the current frame");
         assert!(ir.contains("bp") || ir.contains("offset"), "Should manage stack for local variable y");
         
+        Ok(())
+    }
+
+    #[test]
+    fn test_sibling_call_static_link() -> Pl0Result<()> {
+        let source = "
+        procedure outer;
+        var x;
+            procedure setx;
+            begin
+                x := 1
+            end;
+            procedure show;
+            begin
+                call setx;
+                write(x)
+            end;
+        begin
+            x := 0;
+            call show
+        end;
+        begin
+            call outer
+        end.
+        ";
+
+        let ir = compile_to_ir(source)?;
+        assert!(ir.contains("call setx, 1"), "Sibling call follows one static link");
+        assert!(ir.contains("call show, 0"), "Direct child call passes the current frame");
+        assert!(ir.contains("call outer, 0"), "Top-level call passes the current frame");
+        Ok(())
+    }
+
+    #[test]
+    fn test_recursive_call_static_link() -> Pl0Result<()> {
+        let source = "
+        procedure outer;
+        var x;
+            procedure rec;
+            begin
+                if x = 0 then
+                begin
+                    x := 1;
+                    call rec
+                end
+            end;
+        begin
+            x := 0;
+            call rec
+        end;
+        begin
+            call outer
+        end.
+        ";
+
+        let ir = compile_to_ir(source)?;
+        assert!(ir.contains("call rec, 0"), "Outer calls rec as a direct child");
+        assert!(ir.contains("call rec, 1"), "Recursive call follows one static link");
         Ok(())
     }
 

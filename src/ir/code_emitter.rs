@@ -24,7 +24,7 @@ pub trait CodeEmitter {
     fn emit_is_odd(&mut self, dest: &str, src: &str) -> Pl0Result<()>;
     fn emit_beqz(&mut self, src: &str, label: &str) -> Pl0Result<()>;
     fn emit_jump(&mut self, label: &str) -> Pl0Result<()>;
-    fn emit_call(&mut self, label: &str) -> Pl0Result<()>;
+    fn emit_call(&mut self, label: &str, static_link_hops: usize) -> Pl0Result<()>;
     fn emit_exit(&mut self, code: i32) -> Pl0Result<()>;
     fn emit_write_int(&mut self, src: &str) -> Pl0Result<()>;
     fn emit_read_int(&mut self, dest: &str) -> Pl0Result<()>;
@@ -140,8 +140,8 @@ impl<'a> CodeEmitter for StringCodeEmitter<'a> {
         self.emit(&format!("jump {}", label))
     }
 
-    fn emit_call(&mut self, label: &str) -> Pl0Result<()> {
-        self.emit(&format!("call {}", label))
+    fn emit_call(&mut self, label: &str, static_link_hops: usize) -> Pl0Result<()> {
+        self.emit(&format!("call {}, {}", label, static_link_hops))
     }
 
     fn emit_exit(&mut self, code: i32) -> Pl0Result<()> {

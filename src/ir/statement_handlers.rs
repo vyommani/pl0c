@@ -21,13 +21,17 @@ pub fn handle_call(gen: &mut IRGenerator, call: &CallStmt) -> Pl0Result<()> {
     use crate::semantic::symboltable::SymbolLocation;
     
     let symbol = symbol_helpers::get_procedure_symbol(gen, &call.identifier, "procedure")?;
+    let declared_at = symbol.level;
     let label = match &symbol.location {
         SymbolLocation::GlobalLabel(label) => label.clone(),
         SymbolLocation::None => call.identifier.clone(),
         _ => return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", call.identifier))),
     };
+    // Hops from the caller to the scope that declared the callee. Zero passes
+    // the current frame (a direct child). One or more follows the static link.
+    let hops = gen.symbol_table.distance_to(declared_at);
     let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_call(&label)
+    emitter.emit_call(&label, hops)
 }
 
 pub fn handle_begin(gen: &mut IRGenerator, expr: &BeginStmt) -> Pl0Result<()> {

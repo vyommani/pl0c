@@ -69,6 +69,12 @@ impl StackAnalyzer {
             if parts.is_empty() {
                 continue;
             }
+            if parts[0] == "call" {
+                let hops = parts.get(2).unwrap_or(&"0").trim_end_matches(',').parse::<usize>().unwrap_or(0);
+                if hops > 0 {
+                    used_callee_saved.insert(12);
+                }
+            }
             if parts[0] == "st" || parts[0] == "ld" {
                 for part in &parts {
                     if part.contains("[bp-") || part.contains("[up-") {
@@ -558,8 +564,12 @@ impl X86_64AssemblyEmitter {
 
     fn emit_call(&self, rest: &[&str], _idx: usize, _allocator: &mut dyn RegisterAllocator, output: &mut String) -> Pl0Result<()> {
         let label = rest.get(0).unwrap_or(&"").trim_end_matches(',');
-        output.push_str("    mov r12, rbp ; Pass static link\n");
-        output.push_str("    and rsp, -16 ; Align stack to 16 bytes\n");
+        let hops = rest.get(1).unwrap_or(&"0").trim_end_matches(',').parse::<usize>().unwrap_or(0);
+        output.push_str("    mov r12, rbp\n");
+        for _ in 0..hops {
+            output.push_str("    mov r12, [r12 - 8]\n");
+        }
+        output.push_str("    and rsp, -16\n");
         output.push_str(&format!("    call {}\n", label));
         Ok(())
     }
