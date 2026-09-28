@@ -56,7 +56,9 @@ impl<'a> Parser<'a> {
                 self.current_token = element.clone();
                 self.line_number = *line;
             }
-            None => {}
+            None => {
+                self.current_token = Token::Eof;
+            }
         }
     }
 
@@ -461,6 +463,9 @@ impl<'a> Parser<'a> {
             let operator = self.current_token.to_string();
             self.next();
             let rhs = self.factor(table, mapped_identifiers)?;
+            if lhs.is_none() || rhs.is_none() {
+                return Err(Pl0Error::SyntaxError {expected: "expression".to_string(), found: "none".to_string(), line: self.line_number, });
+            }
             lhs = Some(Box::new(BinOp::new(lhs, rhs, operator)));
         }
         Ok(lhs)
@@ -515,18 +520,18 @@ impl<'a> Parser<'a> {
                 }
                 let operand = self.factor(table, mapped_identifiers)?;
                 if operand.is_none() {
-                    return Err(Pl0Error::SyntaxError {
-                        expected: "factor".to_string(),
-                        found: "none".to_string(),
-                        line: self.line_number,
-                    });
+                    return Err(Pl0Error::SyntaxError {expected: "factor".to_string(), found: "none".to_string(), line: self.line_number,});
                 }
                 let zero = Some(Box::new(Number::new(0)) as Box<dyn ExpressionNode>);
                 Ok(Some(Box::new(BinOp::new(zero, operand, "Minus".to_string()))))
             }
             Token::Plus => {
                 self.expect(Token::Plus)?;
-                self.factor(table, mapped_identifiers)
+                let operand = self.factor(table, mapped_identifiers)?;
+                if operand.is_none() {
+                    return Err(Pl0Error::SyntaxError {expected: "factor".to_string(), found: "none".to_string(), line: self.line_number,});
+                }
+                Ok(operand)
             }
             _ => Ok(None), // No factor found
         }

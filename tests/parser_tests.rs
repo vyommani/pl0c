@@ -2359,3 +2359,65 @@ fn test_complex_calculator_program() -> Pl0Result<()> {
         
         Ok(())
     }
+
+    #[test]
+    fn test_multiply_at_end_of_file_is_a_syntax_error() -> Pl0Result<()> {
+        let source = "var x;\nbegin\n    x := 1*";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+
+        match result {
+            Err(Pl0Error::SyntaxError { expected, found, line }) => {
+                assert_eq!(expected, "expression");
+                assert_eq!(found, "none");
+                assert_eq!(line, 3);
+                Ok(())
+            }
+            Err(err) => panic!("Expected SyntaxError, got {err:?}"),
+            Ok(_) => panic!("Expected error but parsing succeeded"),
+        }
+    }
+
+    #[test]
+    fn test_unary_plus_at_end_of_file_is_a_syntax_error() -> Pl0Result<()> {
+        let source = "var x;\nbegin\n    x := +";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+
+        match result {
+            Err(Pl0Error::SyntaxError { expected, found, line }) => {
+                assert_eq!(expected, "factor");
+                assert_eq!(found, "none");
+                assert_eq!(line, 3);
+                Ok(())
+            }
+            Err(err) => panic!("Expected SyntaxError, got {err:?}"),
+            Ok(_) => panic!("Expected error but parsing succeeded"),
+        }
+    }
+
+    #[test]
+    fn test_begin_at_end_of_file_expects_end() -> Pl0Result<()> {
+        let source = "var x;\nbegin\n    x := 1;";
+        let mut table = SymbolTable::new();
+        let mut state = LineNumber::default();
+        let mut tokens = scan(&mut state, source, &mut table)?;
+        let mut parser = Parser::new(&mut tokens);
+        let result = parser.parse(&mut table);
+
+        match result {
+            Err(Pl0Error::SyntaxError { expected, found, .. }) => {
+                assert_eq!(expected, "End");
+                assert_eq!(found, "Eof");
+                Ok(())
+            }
+            Err(err) => panic!("Expected SyntaxError, got {err:?}"),
+            Ok(_) => panic!("Expected error but parsing succeeded"),
+        }
+    }
