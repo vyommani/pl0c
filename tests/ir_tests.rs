@@ -169,7 +169,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("increment:"), "Should contain procedure label");
+        assert!(ir.contains("increment."), "Should contain procedure label");
         assert_eq!(ir.matches("call increment").count(), 2, "Should call increment twice");
         assert!(ir.contains("proc_enter"), "Should contain procedure entry");
         assert!(ir.contains("proc_exit") || ir.contains("ret"), "Should contain procedure exit");
@@ -205,10 +205,10 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("outer:"), "Should contain outer procedure");
-        assert!(ir.contains("inner:"), "Should contain inner procedure");
-        assert!(ir.contains("call inner, 0"), "Direct child call passes the current frame");
-        assert!(ir.contains("call outer, 0"), "Top-level call passes the current frame");
+        assert!(ir.contains("outer."), "Should contain outer procedure");
+        assert!(ir.contains("inner."), "Should contain inner procedure");
+        assert!(has_call(&ir, "inner", 0), "Direct child call passes the current frame");
+        assert!(has_call(&ir, "outer", 0), "Top-level call passes the current frame");
         assert!(ir.contains("bp") || ir.contains("offset"), "Should manage stack for local variable y");
         
         Ok(())
@@ -238,9 +238,9 @@ mod tests {
         ";
 
         let ir = compile_to_ir(source)?;
-        assert!(ir.contains("call setx, 1"), "Sibling call follows one static link");
-        assert!(ir.contains("call show, 0"), "Direct child call passes the current frame");
-        assert!(ir.contains("call outer, 0"), "Top-level call passes the current frame");
+        assert!(has_call(&ir, "setx", 1), "Sibling call follows one static link");
+        assert!(has_call(&ir, "show", 0), "Direct child call passes the current frame");
+        assert!(has_call(&ir, "outer", 0), "Top-level call passes the current frame");
         Ok(())
     }
 
@@ -267,8 +267,8 @@ mod tests {
         ";
 
         let ir = compile_to_ir(source)?;
-        assert!(ir.contains("call rec, 0"), "Outer calls rec as a direct child");
-        assert!(ir.contains("call rec, 1"), "Recursive call follows one static link");
+        assert!(has_call(&ir, "rec", 0), "Outer calls rec as a direct child");
+        assert!(has_call(&ir, "rec", 1), "Recursive call follows one static link");
         Ok(())
     }
 
@@ -760,9 +760,9 @@ mod tests {
         ";
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("outer:"), "Should contain outer procedure");
-        assert!(ir.contains("middle:"), "Should contain middle procedure");
-        assert!(ir.contains("inner:"), "Should contain inner procedure");
+        assert!(ir.contains("outer."), "Should contain outer procedure");
+        assert!(ir.contains("middle."), "Should contain middle procedure");
+        assert!(ir.contains("inner."), "Should contain inner procedure");
         assert!(ir.contains("bp") || ir.contains("sp"), "Should manage stack frame");
         assert_eq!(ir.matches("call").count(), 3, "Should contain two procedure calls");
         
@@ -784,7 +784,7 @@ mod tests {
         ";
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("empty:"), "Should contain empty procedure label");
+        assert!(ir.contains("empty."), "Should contain empty procedure label");
         assert!(ir.contains("call empty"), "Should call empty procedure");
         assert!(ir.contains("proc_enter"), "Should have procedure prologue");
         assert!(ir.contains("proc_exit") || ir.contains("ret"), "Should have procedure epilogue");
@@ -1104,9 +1104,9 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("level1:"), "Should have level1 procedure");
-        assert!(ir.contains("level2:"), "Should have level2 procedure");
-        assert!(ir.contains("level3:"), "Should have level3 procedure");
+        assert!(ir.contains("level1."), "Should have level1 procedure");
+        assert!(ir.contains("level2."), "Should have level2 procedure");
+        assert!(ir.contains("level3."), "Should have level3 procedure");
 
         assert!(ir.contains("call level3"), "Should call level3");
         assert!(ir.contains("call level2"), "Should call level2");
@@ -1418,7 +1418,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("factorial:"), "Should have factorial procedure");
+        assert!(ir.contains("factorial."), "Should have factorial procedure");
         assert!(ir.contains("call factorial"), "Should have recursive call");
         assert!(ir.contains("bp") || ir.contains("sp"), "Should manage stack for recursion");
         assert!(ir.contains("cmp_le"), "Should have less-or-equal comparison");
@@ -1454,8 +1454,8 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("add1:"), "Should have add1 procedure");
-        assert!(ir.contains("mul2:"), "Should have mul2 procedure");
+        assert!(ir.contains("add1."), "Should have add1 procedure");
+        assert!(ir.contains("mul2."), "Should have mul2 procedure");
         assert_eq!(ir.matches("call add1").count(), 2, "Should call add1 twice");
         assert_eq!(ir.matches("call mul2").count(), 1, "Should call mul2 once");
         assert!(ir.contains("add"), "Should have addition");
@@ -1480,7 +1480,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("empty:"), "Should have empty procedure label");
+        assert!(ir.contains("empty."), "Should have empty procedure label");
         assert!(ir.contains("call empty"), "Should call empty procedure");
         assert!(ir.contains("proc_enter"), "Should have procedure prologue");
         assert!(ir.contains("proc_exit") || ir.contains("ret"), "Should have procedure epilogue");
@@ -1982,7 +1982,7 @@ mod tests {
         "#;
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("reverse_number:"), "Should have reverse_number procedure");
+        assert!(ir.contains("reverse_number."), "Should have reverse_number procedure");
         assert!(ir.contains("cmp_eq"), "Should have equality comparison");
         assert!(ir.contains("write_int") && ir.contains("li v25, 1"), "Should write 1 for palindrome");
         assert!(ir.contains("write_int") && ir.contains("li v26, 0"), "Should write 0 for non-palindrome");
@@ -2391,7 +2391,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("recurse:"), "Should have recurse procedure label");
+        assert!(ir.contains("recurse."), "Should have recurse procedure label");
         assert_eq!(ir.matches("call recurse").count(), 3, "Should have two recursive calls");
         assert!(ir.contains("cmp_le"), "Should have less-or-equal comparison");
         assert!(ir.contains("sub") && ir.contains("add"), "Should have arithmetic operations");
@@ -2421,7 +2421,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("add_params:"), "Should have procedure label");
+        assert!(ir.contains("add_params."), "Should have procedure label");
         assert!(ir.contains("call add_params"), "Should call procedure");
         assert!(ir.contains("ld v0, [param1]") && ir.contains("ld v1, [param2]"), "Should load parameters");
         assert!(ir.contains("add v2, v0, v1"), "Should perform addition");
@@ -2646,7 +2646,7 @@ mod tests {
         let ir = compile_to_ir(source)?;
         
         // currently, unused procedures are still emitted, but their body should be optimized away
-        assert!(!ir.contains("unused:"), "Should not generate IR for uncalled procedure");
+        assert!(!ir.contains("unused."), "Should not generate IR for uncalled procedure");
         assert!(!ir.contains("write_int"), "Should not generate write for unused procedure");
         
         Ok(())
@@ -2776,7 +2776,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("minimal:"), "Should have procedure label");
+        assert!(ir.contains("minimal."), "Should have procedure label");
         assert!(ir.contains("call minimal"), "Should call procedure");
         assert!(ir.contains("proc_enter") && (ir.contains("proc_exit") || ir.contains("ret")), 
                 "Should have minimal prologue and epilogue");
@@ -2810,8 +2810,8 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("outer:"), "Should have outer procedure");
-        assert!(ir.contains("inner:"), "Should have inner procedure");
+        assert!(ir.contains("outer."), "Should have outer procedure");
+        assert!(ir.contains("inner."), "Should have inner procedure");
         assert!(ir.contains("call inner"), "Should call inner procedure");
         assert!(ir.contains("li v0, 10") && ir.contains("st [up-16-1], v0"), "Should assign to local");
         assert!(ir.contains("ld") && ir.contains("add") && ir.contains("st [_global]"), 
@@ -2876,7 +2876,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("check:"), "Should have procedure label");
+        assert!(ir.contains("check."), "Should have procedure label");
         assert!(ir.contains("cmp_gt"), "Should have greater-than comparison");
         assert!(ir.contains("beqz"), "Should have conditional branch");
         
@@ -2964,7 +2964,7 @@ mod tests {
         
         let ir = compile_to_ir(source)?;
         
-        assert!(ir.contains("nested_loops:"), "Should have procedure label");
+        assert!(ir.contains("nested_loops."), "Should have procedure label");
         assert!(ir.matches("cmp_lt").count() >= 2, "Should have two less-than comparisons");
         assert!(ir.matches("jump").count() >= 2, "Should have jumps for nested loops");
         assert!(ir.matches("L").count() >= 4, "Should have at least four labels");
@@ -3042,6 +3042,94 @@ mod tests {
         assert!(ir.matches("beqz").count() >= 1, "Should have branch for conditional");
         assert!(ir.contains("jump"), "Should have loop jump");
         
+        Ok(())
+    }
+
+    fn has_call(ir: &str, name: &str, hops: u32) -> bool {
+        ir.lines().any(|line| {
+            let line = line.trim();
+            line.starts_with(&format!("call {name}.")) && line.ends_with(&format!(", {hops}"))
+        })
+    }
+
+    fn defined_labels(ir: &str) -> Vec<&str> {
+        ir.lines().filter_map(|line| line.trim().strip_suffix(':')).collect()
+    }
+
+    #[test]
+    fn test_procedure_labels_do_not_collide() -> Pl0Result<()> {
+        let two_p = "
+            procedure outer;
+                procedure p;
+                begin
+                    write 1
+                end;
+            begin
+                call p
+            end;
+
+            procedure q;
+                procedure p;
+                begin
+                    write 2
+                end;
+            begin
+                call p
+            end;
+
+            begin
+                call outer;
+                call q
+            end.
+        ";
+        let ir = compile_to_ir(two_p)?;
+        let labels = defined_labels(&ir);
+        let p_labels: Vec<_> = labels.iter().copied().filter(|label| label.starts_with("p.")).collect();
+        assert_eq!(p_labels.len(), 2, "each procedure p needs its own label: {ir}");
+        assert_ne!(p_labels[0], p_labels[1]);
+        assert!(!labels.contains(&"p"), "source name p must not be an assembly label");
+        assert!(ir.contains(&format!("call {}, 0", p_labels[0])));
+        assert!(ir.contains(&format!("call {}, 0", p_labels[1])));
+
+        let proc_x = "
+            var x;
+            procedure outer;
+                procedure x;
+                begin
+                    write 1
+                end;
+            begin
+                call x
+            end;
+            begin
+                x := 2;
+                call outer;
+                write x
+            end.
+        ";
+        let ir = compile_to_ir(proc_x)?;
+        let labels = defined_labels(&ir);
+        assert!(labels.iter().any(|label| label.starts_with("x.")), "procedure x needs a dotted label: {ir}");
+        assert!(!labels.contains(&"x"), "global var x must not share the procedure label");
+        assert!(ir.contains("var x"));
+        assert!(ir.contains("st [x],"));
+
+        let proc_main = "
+            procedure main;
+            begin
+                write 1
+            end;
+            begin
+                call main;
+                write 2
+            end.
+        ";
+        let ir = compile_to_ir(proc_main)?;
+        let labels = defined_labels(&ir);
+        assert_eq!(labels.iter().filter(|label| **label == "main").count(), 1, "entry point main must stay unique: {ir}");
+        let proc_label = labels.iter().copied().find(|label| label.starts_with("main.")).expect("procedure main needs its own label");
+        assert!(ir.contains(&format!("call {proc_label}, 0")));
+
         Ok(())
     }
 }

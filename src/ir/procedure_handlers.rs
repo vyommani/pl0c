@@ -15,7 +15,8 @@ pub fn handle_proc_decl(gen: &mut IRGenerator, expr: &ProcDecl) -> Pl0Result<()>
             let body_scope = gen.symbol_table.get(name)
                 .and_then(|symbol| symbol.body_scope)
                 .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} has no recorded body scope", name)))?;
-            emit_single_procedure(gen, name, proc_block, body_scope)?;
+            let label = procedure_label(gen, name)?;
+            emit_single_procedure(gen, &label, proc_block, body_scope)?;
         }
     }
     Ok(())
@@ -54,9 +55,9 @@ pub fn handle_block(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
     Ok(())
 }
 
-fn emit_single_procedure(gen: &mut IRGenerator, name: &str, proc_block: &Option<Box<dyn Node>>, body_scope: usize) -> Pl0Result<()> {
+fn emit_single_procedure(gen: &mut IRGenerator, label: &str, proc_block: &Option<Box<dyn Node>>, body_scope: usize) -> Pl0Result<()> {
     use super::ir_emitter;
-    ir_emitter::emit_label(gen, name)?;
+    ir_emitter::emit_label(gen, label)?;
     gen.scope = gen.scope.push_scope(true, Some(body_scope), false);
     
     // Calculate stack size
@@ -92,7 +93,8 @@ fn collect_all_procedures<'a>(gen: &mut IRGenerator, block: &'a Block, enclosing
         let body_scope = gen.symbol_table.get(name)
             .and_then(|symbol| symbol.body_scope)
             .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} has no recorded body scope", name)))?;
-        procedures.push((name.clone(), proc_block, body_scope));
+        let label = procedure_label(gen, name)?;
+        procedures.push((label, proc_block, body_scope));
         if let Some(proc_block) = proc_block {
             if let Some(nested_block) = proc_block.as_any().downcast_ref::<Block>() {
                 collect_all_procedures(gen, nested_block, body_scope, procedures)?;
@@ -109,11 +111,22 @@ fn emit_procedures(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
     let mut all_procedures = Vec::new();
     let enclosing_level = gen.scope.level();
     collect_all_procedures(gen, block, enclosing_level, &mut all_procedures)?;
-    for (name, proc_block, body_scope) in all_procedures {
-        emit_single_procedure(gen, &name, proc_block, body_scope)?;
+    for (label, proc_block, body_scope) in all_procedures {
+        emit_single_procedure(gen, &label, proc_block, body_scope)?;
     }
     gen.procedures_emitted = true;
     Ok(())
+}
+
+fn procedure_label(gen: &IRGenerator, name: &str) -> Pl0Result<String> {
+    use crate::semantic::symboltable::SymbolLocation;
+
+    let symbol = gen.symbol_table.get(name)
+        .ok_or_else(|| Pl0Error::codegen_error(format!("Procedure {} has no symbol", name)))?;
+    match &symbol.location {
+        SymbolLocation::GlobalLabel(label) => Ok(label.clone()),
+        _ => Err(Pl0Error::codegen_error(format!("Procedure {} has no label", name))),
+    }
 }
 
 fn calculate_stack_size(stack_slots: usize) -> usize {

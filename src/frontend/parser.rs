@@ -37,6 +37,7 @@ pub struct Parser<'a> {
     current_token: Token,
     line_number: usize,
     iter: Iter<'a, (Token, usize)>,
+    next_procedure_label: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -45,6 +46,7 @@ impl<'a> Parser<'a> {
             current_token: Token::Null,
             line_number: 1,
             iter: tokens.iter(),
+            next_procedure_label: 1,
         };
         parser.next();
         parser
@@ -201,7 +203,9 @@ impl<'a> Parser<'a> {
             let mut name = self.get_identifier(&self.current_token)?;
             name = rename_identifier(&name, true, mapped_identifiers);
             let enclosing_scope = table.current_scope();
-            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(name.clone()), true, enclosing_scope))?;
+            let label = format!("{}.{}", name, self.next_procedure_label);
+            self.next_procedure_label += 1;
+            table.insert(&name, Symbol::new(SymbolType::Procedure, self.line_number, SymbolLocation::GlobalLabel(label), true, enclosing_scope))?;
             let body_scope = table.push_scope();
             table.set_body_scope(enclosing_scope, &name, body_scope);
             self.expect_ident()?;
