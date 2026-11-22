@@ -1,8 +1,9 @@
 use super::IRGenerator;
+use super::ir_emitter;
+use super::tac::MemLoc;
 use crate::{
     semantic::symboltable::{Symbol, SymbolLocation, SymbolType},
     utils::errors::{Pl0Result, Pl0Error},
-    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn get_symbol_with_type<'a>(
@@ -62,20 +63,24 @@ pub fn emit_load_from_symbol(
     target_vreg: &str,
     fallback_name: &str
 ) -> Pl0Result<()> {
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
     gen.symbol_table.enter_scope(gen.scope.level());
     let distance = gen.symbol_table.distance_to(symbol.level);
     match &symbol.location {
         SymbolLocation::StackOffset(offset) => {
-            if distance > 0 {
-                emitter.emit_ld(target_vreg, &format!("up-{}-{}", offset, distance))
+            let loc = if distance > 0 {
+                MemLoc::Outer { offset: *offset, distance }
             } else {
-                emitter.emit_ld(target_vreg, &format!("bp-{}", offset))
-            }
+                MemLoc::Local { offset: *offset }
+            };
+            ir_emitter::emit_ld(gen, target_vreg, loc)
         }
-        SymbolLocation::GlobalLabel(label) => emitter.emit_ld(target_vreg, label),
-        SymbolLocation::Immediate(value) => emitter.emit_li(target_vreg, &value.to_string()),
-        SymbolLocation::None => emitter.emit_ld(target_vreg, fallback_name),
+        SymbolLocation::GlobalLabel(label) => {
+            ir_emitter::emit_ld(gen, target_vreg, MemLoc::Global(label.clone()))
+        }
+        SymbolLocation::Immediate(value) => ir_emitter::emit_li(gen, target_vreg, *value),
+        SymbolLocation::None => {
+            ir_emitter::emit_ld(gen, target_vreg, MemLoc::Global(fallback_name.to_string()))
+        }
     }
 }
 
@@ -85,19 +90,23 @@ pub fn emit_store_to_symbol(
     source_vreg: &str,
     fallback_name: &str
 ) -> Pl0Result<()> {
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
     gen.symbol_table.enter_scope(gen.scope.level());
     let distance = gen.symbol_table.distance_to(symbol.level);
     match &symbol.location {
         SymbolLocation::StackOffset(offset) => {
-            if distance > 0 {
-                emitter.emit_st(&format!("up-{}-{}", offset, distance), source_vreg)
+            let loc = if distance > 0 {
+                MemLoc::Outer { offset: *offset, distance }
             } else {
-                emitter.emit_st(&format!("bp-{}", offset), source_vreg)
-            }
+                MemLoc::Local { offset: *offset }
+            };
+            ir_emitter::emit_st(gen, loc, source_vreg)
         }
-        SymbolLocation::GlobalLabel(label) => emitter.emit_st(label, source_vreg),
-        SymbolLocation::None => emitter.emit_st(fallback_name, source_vreg),
+        SymbolLocation::GlobalLabel(label) => {
+            ir_emitter::emit_st(gen, MemLoc::Global(label.clone()), source_vreg)
+        }
+        SymbolLocation::None => {
+            ir_emitter::emit_st(gen, MemLoc::Global(fallback_name.to_string()), source_vreg)
+        }
         SymbolLocation::Immediate(_) => {
             Err(Pl0Error::codegen_error(format!("Cannot store to immediate value: {}", fallback_name)))
         }

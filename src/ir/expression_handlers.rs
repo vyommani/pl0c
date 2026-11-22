@@ -2,30 +2,28 @@ use super::IRGenerator;
 use crate::{
     ast::{ExpressionNode, BinOp, OddCondition, RelationalCondition, Ident, Number, Variable},
     utils::errors::{Pl0Result, Pl0Error},
-    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
     semantic::symboltable::{SymbolType, SymbolLocation},
 };
 
 pub fn handle_ident(gen: &mut IRGenerator, ident: &Ident) -> Pl0Result<String> {
     use super::symbol_helpers;
-    
+    use super::ir_emitter;
+
     gen.symbol_table.enter_scope(gen.scope.level());
     let symbol = gen.symbol_table.get(&ident.value)
         .ok_or_else(|| Pl0Error::codegen_error(format!("Undefined identifier: {}", ident.value)))?.clone();
-    
+
     match symbol.symbol_type {
         SymbolType::Constant(value) => {
             let vreg = gen.allocate_virtual_register();
-            let mut emitter = StringCodeEmitter::new(&mut gen.code);
-            emitter.emit_li(&vreg, &value.to_string())?;
+            ir_emitter::emit_li(gen, &vreg, value)?;
             Ok(vreg)
         }
         SymbolType::Procedure => {
             let vreg = gen.allocate_virtual_register();
             match &symbol.location {
                 SymbolLocation::GlobalLabel(label) => {
-                    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-                    emitter.emit(&format!("la {}, {}", vreg, label))?;
+                    ir_emitter::emit_raw(gen, &format!("la {}, {}", vreg, label))?;
                 }
                 _ => return Err(Pl0Error::codegen_error(format!("Procedure {} has no valid address", ident.value))),
             }
@@ -47,9 +45,9 @@ pub fn handle_ident(gen: &mut IRGenerator, ident: &Ident) -> Pl0Result<String> {
 }
 
 pub fn handle_number(gen: &mut IRGenerator, number: &Number) -> Pl0Result<String> {
+    use super::ir_emitter;
     let vreg = gen.allocate_virtual_register();
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_li(&vreg, &number.value.to_string())?;
+    ir_emitter::emit_li(gen, &vreg, number.value)?;
     Ok(vreg)
 }
 
@@ -86,8 +84,7 @@ pub fn handle_binary_operation(gen: &mut IRGenerator, binop: &BinOp) -> Pl0Resul
             _ => return Err(Pl0Error::codegen_error(format!("Unknown operator: {}", binop.operator))),
         };
         let vreg = gen.allocate_virtual_register();
-        let mut emitter = StringCodeEmitter::new(&mut gen.code);
-        emitter.emit_li(&vreg, &result.to_string())?;
+        super::ir_emitter::emit_li(gen, &vreg, result)?;
         return Ok(vreg);
     }
     
@@ -95,12 +92,12 @@ pub fn handle_binary_operation(gen: &mut IRGenerator, binop: &BinOp) -> Pl0Resul
 }
 
 pub fn handle_odd_condition(gen: &mut IRGenerator, cond: &OddCondition) -> Pl0Result<String> {
+    use super::ir_emitter;
     let expr = cond.expr.as_ref()
         .ok_or_else(|| Pl0Error::codegen_error("OddCondition missing expression"))?;
     let num_reg = ExpressionNode::accept(expr.as_ref(), gen)?;
     let result_reg = gen.allocate_virtual_register();
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_is_odd(&result_reg, &num_reg)?;
+    ir_emitter::emit_is_odd(gen, &result_reg, &num_reg)?;
     Ok(result_reg)
 }
 

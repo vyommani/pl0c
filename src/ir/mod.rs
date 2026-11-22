@@ -8,7 +8,9 @@ pub mod ir_emitter;
 pub mod stack_manager;
 pub mod ir_dispatch;
 pub mod code_emitter;
+pub mod tac;
 
 pub use generator::IRGenerator;
 pub use code_emitter::{CodeEmitter, StringCodeEmitter};
 pub use ir_dispatch::*;
+pub use tac::{BasicBlock, Function, Instr, MemLoc, TacModule, VReg, Value};

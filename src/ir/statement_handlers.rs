@@ -2,7 +2,6 @@ use super::IRGenerator;
 use crate::{
     ast::{ExpressionNode, AssignStmt, BeginStmt, CallStmt, IfStmt,WhileStatement, Read, Write, WriteStr, ConstDecl, VarDecl,},
     utils::errors::{Pl0Result, Pl0Error},
-    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn handle_assign(gen: &mut IRGenerator, stmt: &AssignStmt) -> Pl0Result<()> {
@@ -18,8 +17,9 @@ pub fn handle_assign(gen: &mut IRGenerator, stmt: &AssignStmt) -> Pl0Result<()> 
 
 pub fn handle_call(gen: &mut IRGenerator, call: &CallStmt) -> Pl0Result<()> {
     use super::symbol_helpers;
+    use super::ir_emitter;
     use crate::semantic::symboltable::SymbolLocation;
-    
+
     let symbol = symbol_helpers::get_procedure_symbol(gen, &call.identifier, "procedure")?;
     let declared_at = symbol.level;
     let label = match &symbol.location {
@@ -30,8 +30,7 @@ pub fn handle_call(gen: &mut IRGenerator, call: &CallStmt) -> Pl0Result<()> {
     // Hops from the caller to the scope that declared the callee. Zero passes
     // the current frame (a direct child). One or more follows the static link.
     let hops = gen.symbol_table.distance_to(declared_at);
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_call(&label, hops)
+    ir_emitter::emit_call(gen, &label, hops)
 }
 
 pub fn handle_begin(gen: &mut IRGenerator, expr: &BeginStmt) -> Pl0Result<()> {
@@ -93,29 +92,28 @@ pub fn handle_while(gen: &mut IRGenerator, stmt: &WhileStatement) -> Pl0Result<(
 
 pub fn handle_read_int(gen: &mut IRGenerator, expr: &Read) -> Pl0Result<()> {
     use super::symbol_helpers;
-    
+    use super::ir_emitter;
+
     let symbol = symbol_helpers::get_variable_symbol(gen, &expr.identifier, "variable in read")?.clone();
     let vreg = gen.allocate_virtual_register();
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_read_int(&vreg)?;
+    ir_emitter::emit_read_int(gen, &vreg)?;
     symbol_helpers::emit_store_to_symbol(gen, &symbol, &vreg, &expr.identifier)?;
     Ok(())
 }
 
 pub fn handle_write_int(gen: &mut IRGenerator, stmt: &Write) -> Pl0Result<()> {
+    use super::ir_emitter;
     let expr = stmt.expr.as_ref()
         .ok_or_else(|| Pl0Error::codegen_error("Write statement missing expression"))?;
     let vreg = ExpressionNode::accept(expr.as_ref(), gen)?;
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_write_int(&vreg)
+    ir_emitter::emit_write_int(gen, &vreg)
 }
 
 pub fn handle_write_str(gen: &mut IRGenerator, stmt: &WriteStr) -> Pl0Result<()> {
     if stmt.expr.is_empty() {
         return Err(Pl0Error::codegen_error("WriteStr statement missing expression"));
     }
-    let mut emitter = StringCodeEmitter::new(&mut gen.code);
-    emitter.emit_write_str(&stmt.expr)
+    super::ir_emitter::emit_write_str(gen, &stmt.expr)
 }
 
 pub fn handle_exit(gen: &mut IRGenerator) -> Pl0Result<()> {
@@ -125,8 +123,7 @@ pub fn handle_exit(gen: &mut IRGenerator) -> Pl0Result<()> {
 
 pub fn handle_const_decl(gen: &mut IRGenerator, expr: &ConstDecl) -> Pl0Result<()> {
     for (id, num) in &expr.const_decl {
-        let mut emitter = StringCodeEmitter::new(&mut gen.constants);
-        emitter.emit_const(id, &num.to_string())?;
+        gen.push_const(id.clone(), *num);
     }
     Ok(())
 }
@@ -134,8 +131,7 @@ pub fn handle_const_decl(gen: &mut IRGenerator, expr: &ConstDecl) -> Pl0Result<(
 pub fn handle_var_decl(gen: &mut IRGenerator, expr: &VarDecl) -> Pl0Result<()> {
     for var_name in &expr.var_decl {
         if !gen.scope.in_procedure() {
-            let mut emitter = StringCodeEmitter::new(&mut gen.variables);
-            emitter.emit_var(var_name)?;
+            gen.push_global(var_name.clone());
         }
     }
     Ok(())

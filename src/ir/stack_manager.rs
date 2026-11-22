@@ -1,9 +1,10 @@
 use super::IRGenerator;
+use super::ir_emitter;
+use super::tac::MemLoc;
 use crate::{
     ast::Block,
     utils::errors::Pl0Result,
     semantic::symboltable::SymbolLocation,
-    ir::code_emitter::{CodeEmitter, StringCodeEmitter},
 };
 
 pub fn initialize_local_variables(gen: &mut IRGenerator, block: &Block) -> Pl0Result<()> {
@@ -21,9 +22,8 @@ pub fn initialize_local_variables(gen: &mut IRGenerator, block: &Block) -> Pl0Re
         // Now emit the initialization code
         for offset in var_offsets {
             let zero_reg = gen.allocate_virtual_register();
-            let mut emitter = StringCodeEmitter::new(&mut gen.code);
-            emitter.emit_li(&zero_reg, "0")?;
-            emitter.emit_st(&format!("bp-{}", offset), &zero_reg)?;
+            ir_emitter::emit_li(gen, &zero_reg, 0)?;
+            ir_emitter::emit_st(gen, MemLoc::Local { offset }, &zero_reg)?;
         }
     }
     Ok(())
