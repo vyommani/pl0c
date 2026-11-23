@@ -6,7 +6,7 @@ use crate::utils::write_line;
 use crate::utils::errors::Pl0Result;
 use crate::utils::errors::Pl0Error;
 use std::any::Any;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use regex::Regex;
 use crate::backend::common::target_os::TargetOS;
 
@@ -26,8 +26,8 @@ impl RuntimeNeeds {
 }
 
 pub struct DataInfo {
-    pub variables: HashSet<String>,
-    pub constants: HashMap<String, String>,
+    pub variables: Vec<String>,
+    pub constants: Vec<(String, String)>,
     pub runtime_needs: RuntimeNeeds,
     pub strings: Vec<String>,
 }
@@ -35,8 +35,8 @@ pub struct DataInfo {
 impl DataInfo {
     pub fn new() -> Self {
         Self {
-            variables: HashSet::new(),
-            constants: HashMap::new(),
+            variables: Vec::new(),
+            constants: Vec::new(),
             runtime_needs: RuntimeNeeds::new(),
             strings: Vec::new(),
         }
@@ -54,7 +54,9 @@ impl DataInfo {
             if line.starts_with("var ") {
                 let vars = line[4..].split(',').map(|v| v.trim()).filter(|v| !v.is_empty());
                 for v in vars {
-                    data_info.variables.insert(v.to_string());
+                    if !data_info.variables.iter().any(|existing| existing == v) {
+                        data_info.variables.push(v.to_string());
+                    }
                 }
             } else if line.starts_with("const ") {
                 if let Some(captures) = const_regex.captures(line) {
@@ -64,7 +66,10 @@ impl DataInfo {
                         return Err(Pl0Error::CodeGenError {
                             message: "Invalid const format".to_string(),line: None});
                     }
-                    data_info.constants.insert(name.to_string(), value.to_string());
+                    match data_info.constants.iter_mut().find(|(n, _)| n == name) {
+                        Some(entry) => entry.1 = value.to_string(),
+                        None => data_info.constants.push((name.to_string(), value.to_string())),
+                    }
                 } else {
                     return Err(Pl0Error::CodeGenError {message: "Invalid const syntax".to_string(), line: None});
                 }
@@ -130,6 +135,10 @@ impl DataInfo {
             }
         }
         Ok(())
+    }
+
+    pub fn constant(&self, name: &str) -> Option<&str> {
+        self.constants.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
     }
 
     pub fn runtime_needs(&self) -> &RuntimeNeeds {

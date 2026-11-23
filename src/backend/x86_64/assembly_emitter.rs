@@ -273,9 +273,9 @@ impl X86_64AssemblyEmitter {
                 *in_proc = false;
             }
             IROp::Exit => {let _ = self.emit_exit(output);}
-            IROp::Li => self.emit_li(rest, idx, allocator, output, &data_info.constants)?,
-            IROp::Ld => self.emit_ld(rest, idx, allocator, output, &data_info.constants)?,
-            IROp::St => self.emit_st(rest, idx, allocator, output, &data_info.constants)?,
+            IROp::Li => self.emit_li(rest, idx, allocator, output, data_info)?,
+            IROp::Ld => self.emit_ld(rest, idx, allocator, output, data_info)?,
+            IROp::St => self.emit_st(rest, idx, allocator, output, data_info)?,
             IROp::Add | IROp::Sub | IROp::Mul => {
                 self.emit_binop(op_str, rest, idx, allocator, output)?
             }
@@ -327,7 +327,9 @@ impl X86_64AssemblyEmitter {
         if stack_analyzer.used_callee_saved.contains(&12) {
             output.push_str("    mov [rbp - 8], r12 ; Store static link\n");
         }
-        let used_callee_saved = stack_analyzer.get_used_callee_saved();
+        // Push in ascending order; emit_epilogue pops in descending order.
+        let mut used_callee_saved: Vec<_> = stack_analyzer.get_used_callee_saved().iter().copied().collect();
+        used_callee_saved.sort();
         for reg in used_callee_saved {
             output.push_str(&format!("    push r{}\n", reg));
         }
@@ -360,12 +362,12 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_li(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, constants: &HashMap<String, String>) -> Pl0Result<()> {
+    fn emit_li(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, data_info: &DataInfo) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let imm = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let pdst = allocator.alloc(dst, output)?;
         // Optimization: Inline constant values
-        let value = constants.get(imm).map(|v| v.as_str()).unwrap_or(imm);
+        let value = data_info.constant(imm).unwrap_or(imm);
         output.push_str(&format!("    mov r{}, {}\n", pdst, value));
         X86_64Runtime::free_if_dead(dst, idx, pdst, allocator);
         Ok(())
@@ -375,7 +377,7 @@ impl X86_64AssemblyEmitter {
         s.trim().trim_start_matches('[').trim_end_matches(']')
     }
 
-    fn emit_ld(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, constants: &HashMap<String, String>) -> Pl0Result<()> {
+    fn emit_ld(&self, rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, data_info: &DataInfo) -> Pl0Result<()> {
         let dst = rest.get(0).unwrap_or(&"").trim_end_matches(',');
         let src_cleaned = rest.get(1).unwrap_or(&"").trim().replace([','], "");
         let src = Self::strip_brackets(&src_cleaned);
@@ -402,7 +404,7 @@ impl X86_64AssemblyEmitter {
                 output.push_str(&format!("    mov r{}, [r{} - 8]\n", temp_reg, temp_reg));
             }
             output.push_str(&format!("    mov r{}, [r{} - {}]\n", pdst, temp_reg, offset));
-        } else if constants.contains_key(src) {
+        } else if data_info.constant(src).is_some() {
             output.push_str(&format!("    mov r{}, [{}]\n", pdst, src));
         } else {
             output.push_str(&format!("    mov r{}, [{}]\n", pdst, src));
@@ -412,13 +414,13 @@ impl X86_64AssemblyEmitter {
         Ok(())
     }
 
-    fn emit_st(&self,rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String,constants: &HashMap<String, String>) -> Pl0Result<()> {
+    fn emit_st(&self,rest: &[&str], idx: usize, allocator: &mut dyn RegisterAllocator, output: &mut String, data_info: &DataInfo) -> Pl0Result<()> {
         let dst_cleaned = rest.get(0).unwrap_or(&"").trim().replace([','], "");
         let dst = Self::strip_brackets(&dst_cleaned);
         let src = rest.get(1).unwrap_or(&"").trim_end_matches(',');
         let psrc = allocator.ensure(src, output)?;
 
-        if constants.contains_key(dst) {
+        if data_info.constant(dst).is_some() {
             return Err(Pl0Error::CodeGenError { message: format!("Cannot store to constant: {}", dst), line: None, });
         }
 
